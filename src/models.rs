@@ -5,7 +5,7 @@ use diesel::{
     serialize::{self, ToSql},
     sql_types,
 };
-use std::{collections::HashMap, fmt};
+use std::fmt;
 
 #[derive(Debug, Clone, Copy)]
 pub enum WorkStatus {
@@ -62,7 +62,7 @@ pub struct WorkEventT {
 #[table_name = "staff"]
 #[primary_key(uuid)]
 pub struct StaffMember {
-    uuid: i32,
+    pub uuid: i32,
     pub name: String,
     pub pin: String,
     pub cardid: String,
@@ -82,27 +82,26 @@ impl StaffMember {
     //     None
     // }
 
-    pub fn get_uuid_by_pin_or_card_id(
-        staff: &HashMap<i32, StaffMember>,
-        ident: &str,
-    ) -> Option<i32> {
-        for (uuid, staff_member) in staff.iter() {
+    // DONE can I use lifetimes to return a reference to the staffmember?
+    // yes, by adding the generic lifetime parameter everywhere
+    // TODO is it possible/useful/necessary to "pull out" the lifetime from the Option type?
+    // INVARIANT: pins and cardids are disjoint
+    pub fn get_by_pin_or_card_id<'a>(staff: &'a Vec<Self>, ident: &str) -> Option<&'a Self> {
+        for staff_member in staff.iter() {
             if staff_member.pin == ident || staff_member.cardid == ident {
-                return Some(*uuid);
+                return Some(staff_member);
             }
         }
         None
     }
 
-    pub fn to_hash_map(staff_v: Vec<StaffMember>) -> HashMap<i32, StaffMember> {
-        let mut staff = HashMap::new();
-        for staff_member in staff_v {
-            if let Some(old) = staff.insert(staff_member.uuid, staff_member) {
-                // TODO impl Display for StaffMember
-                panic!("Previous value for uuid {}", old.uuid);
+    pub fn get_by_uuid_mut<'a>(staff: &'a mut Vec<Self>, uuid: i32) -> Option<&'a mut Self> {
+        for staff_member in staff.iter_mut() {
+            if staff_member.uuid == uuid {
+                return Some(staff_member);
             }
         }
-        staff
+        None
     }
 }
 

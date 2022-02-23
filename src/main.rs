@@ -6,7 +6,6 @@ use iced::{
 };
 use iced_aw::{modal, Card, Modal};
 use iced_native::{window, Event};
-use std::collections::HashMap;
 use stechuhr::models::*;
 
 pub fn main() -> iced::Result {
@@ -25,7 +24,7 @@ enum Menu {
 
 struct Stechuhr {
     current_time: DateTime<Local>,
-    staff: HashMap<i32, StaffMember>,
+    staff: Vec<StaffMember>,
     menu: Menu,
     events: Vec<WorkEventT>,
     break_input_value: String,
@@ -84,7 +83,7 @@ impl Application for Stechuhr {
         (
             Self {
                 current_time: Local::now(),
-                staff: StaffMember::to_hash_map(staff_db),
+                staff: staff_db,
                 menu: Menu::Main,
                 events: Vec::new(),
                 break_input_value: String::new(),
@@ -124,10 +123,11 @@ impl Application for Stechuhr {
                 let input = self.break_input_value.trim();
 
                 if input.len() == 4 || input.len() == 6 {
-                    if let Some(uuid) = StaffMember::get_uuid_by_pin_or_card_id(&self.staff, input)
+                    if let Some(staff_member) =
+                        StaffMember::get_by_pin_or_card_id(&self.staff, input)
                     {
                         self.break_modal_state.show(true);
-                        self.break_input_uuid = Some(uuid);
+                        self.break_input_uuid = Some(staff_member.uuid);
                     } else {
                         println!("No matching staff member found for input {}.", input);
                     }
@@ -137,7 +137,7 @@ impl Application for Stechuhr {
             }
             Message::ConfirmSubmitBreakInput => {
                 if let Some(break_uuid) = self.break_input_uuid {
-                    match self.staff.get_mut(&break_uuid) {
+                    match StaffMember::get_by_uuid_mut(&mut self.staff, break_uuid) {
                         Some(staff_member) => {
                             let new_status = !staff_member.status;
                             staff_member.status = new_status;
@@ -161,7 +161,7 @@ impl Application for Stechuhr {
                 self.log_event(WorkEvent::EventOver);
             }
             Message::ExitApplication => {
-                for staff_member in self.staff.values() {
+                for staff_member in self.staff.iter() {
                     diesel::update(staff_member)
                         .set(status.eq(staff_member.status))
                         .execute(&self.connection)
@@ -177,7 +177,7 @@ impl Application for Stechuhr {
     // TODO what is '_?
     fn view(&mut self) -> Element<'_, Message> {
         let mut staff_view = Column::new();
-        for staff_member in self.staff.values() {
+        for staff_member in self.staff.iter() {
             staff_view = staff_view.push(Text::new(format!(
                 "{}: {}",
                 staff_member.name,
@@ -221,7 +221,7 @@ impl Application for Stechuhr {
         );
 
         let break_modal_value = if let Some(break_uuid) = self.break_input_uuid {
-            match self.staff.get(&break_uuid) {
+            match StaffMember::get_by_uuid_mut(&mut self.staff, break_uuid) {
                 Some(staff_member) => format!(
                     "{} wird auf '{}' gesetzt. Korrekt?",
                     staff_member.name,
