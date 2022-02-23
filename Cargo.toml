@@ -1,0 +1,16 @@
+[package]
+name = "stechuhr"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+iced = { version = "0.3", features = ["tokio"] }
+iced_native = { version = "0.4" }
+iced_aw = { git = "https://github.com/iced-rs/iced_aw", branch = "main", default-features = false, features = ["modal", "colors", "card"] }
+chrono = { version = "0.4", features = ["unstable-locales"] }
+time = { version = "0.3", features = ["local-offset"] }
+diesel = { version = "1.4", features = ["sqlite"] }
+dotenv = "0.15"
+serde = { version = "1.0", features = ["derive"] }
