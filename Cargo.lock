@@ -1159,11 +1159,13 @@ name = "iced_aw"
 version = "0.1.0"
 source = "git+https://github.com/iced-rs/iced_aw?branch=main#53e87f244766a056723fda9116cc3f662e1f9a68"
 dependencies = [
+ "chrono",
  "dodrio",
  "iced_graphics",
  "iced_native",
  "iced_style",
  "iced_web",
+ "lazy_static",
  "wasm-bindgen",
  "web-sys",
 ]

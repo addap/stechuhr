@@ -1,12 +1,19 @@
 use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
 use iced::{
-    button, executor, text_input, Application, Button, Column, Command, Container, Element,
+    button, executor, text_input, Align, Application, Button, Column, Command, Container, Element,
     HorizontalAlignment, Length, Row, Settings, Subscription, Text, TextInput,
 };
-use iced_aw::{modal, Card, Modal};
+use iced_aw::{modal, Card, Modal, TabLabel, Tabs};
 use iced_native::{window, Event};
 use stechuhr::models::*;
+
+mod tabs;
+use tabs::management::{ManagementMessage, ManagementTab};
+use tabs::timetrack::{TimetrackMessage, TimetrackTab};
+
+const HEADER_SIZE: u16 = 32;
+const TAB_PADDING: u16 = 16;
 
 pub fn main() -> iced::Result {
     let connection = stechuhr::establish_connection();
@@ -18,50 +25,38 @@ pub fn main() -> iced::Result {
     })
 }
 
-enum Menu {
-    Main,
-}
-
-struct Stechuhr {
+pub struct SharedData {
     current_time: DateTime<Local>,
     staff: Vec<StaffMember>,
-    menu: Menu,
     events: Vec<WorkEventT>,
-    break_input_value: String,
-    break_input_uuid: Option<i32>,
-    // widget states
-    end_party_button_state: button::State,
-    exit_button_state: button::State,
-    break_input_state: text_input::State,
-    break_modal_state: modal::State<BreakModalState>,
     connection: SqliteConnection,
-    should_exit: bool,
 }
 
-#[derive(Default)]
-struct BreakModalState {
-    confirm_state: button::State,
-    cancel_state: button::State,
-}
-
-#[derive(Debug, Clone)]
-enum Message {
-    Tick(DateTime<Local>),
-    ChangeBreakInput(String),
-    SubmitBreakInput,
-    ConfirmSubmitBreakInput,
-    CancelSubmitBreakInput,
-    EndEvent,
-    ExitApplication,
-}
-
-impl Stechuhr {
+impl SharedData {
     fn log_event(&mut self, event: WorkEvent) {
         self.events.push(WorkEventT {
             timestamp: Local::now(),
             event: event,
         });
     }
+}
+
+struct Stechuhr {
+    shared: SharedData,
+    active_tab: usize,
+    should_exit: bool,
+    timetrack: TimetrackTab,
+    management: ManagementTab,
+    // generate: GenerateTab,
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    Tick(DateTime<Local>),
+    ExitApplication,
+    TabSelected(usize),
+    Timetrack(TimetrackMessage),
+    Management(ManagementMessage),
 }
 
 impl Application for Stechuhr {
@@ -74,101 +69,47 @@ impl Application for Stechuhr {
     }
 
     fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
-        use stechuhr::schema::staff::dsl::*;
-
-        let staff_db = staff
-            .load::<StaffMember>(&connection)
-            .expect("Error loading staff from DB");
-
         (
             Self {
-                current_time: Local::now(),
-                staff: staff_db,
-                menu: Menu::Main,
-                events: Vec::new(),
-                break_input_value: String::new(),
-                break_input_uuid: None,
-                end_party_button_state: button::State::default(),
-                exit_button_state: button::State::default(),
-                break_input_state: text_input::State::new(),
-                // TODO why does State not take the type argument <BreakModalState> here?
-                break_modal_state: modal::State::default(),
-                connection: connection,
+                shared: SharedData {
+                    current_time: Local::now(),
+                    staff: stechuhr::load_staff(&connection),
+                    events: Vec::new(),
+                    connection: connection,
+                },
+                active_tab: 0,
                 should_exit: false,
+                timetrack: TimetrackTab::new(),
+                management: ManagementTab::new(),
             },
             Command::none(),
         )
     }
 
     fn title(&self) -> String {
-        String::from("Counter - Iced")
+        String::from("Stechuhr")
     }
 
     fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
-        use stechuhr::schema::staff::dsl::*;
-
-        // always focus the input
-        self.break_input_state.focus();
-
         match message {
             Message::Tick(local_time) => {
-                if local_time > self.current_time {
-                    self.current_time = local_time;
+                if local_time > self.shared.current_time {
+                    self.shared.current_time = local_time;
                 }
-            }
-            Message::ChangeBreakInput(value) => {
-                self.break_input_value = value;
-            }
-            Message::SubmitBreakInput => {
-                let input = self.break_input_value.trim();
-
-                if input.len() == 4 || input.len() == 6 {
-                    if let Some(staff_member) =
-                        StaffMember::get_by_pin_or_card_id(&self.staff, input)
-                    {
-                        self.break_modal_state.show(true);
-                        self.break_input_uuid = Some(staff_member.uuid);
-                    } else {
-                        println!("No matching staff member found for input {}.", input);
-                    }
-                } else {
-                    println!("Malformed input {}.", input);
-                }
-            }
-            Message::ConfirmSubmitBreakInput => {
-                if let Some(break_uuid) = self.break_input_uuid {
-                    match StaffMember::get_by_uuid_mut(&mut self.staff, break_uuid) {
-                        Some(staff_member) => {
-                            let new_status = !staff_member.status;
-                            staff_member.status = new_status;
-                            self.log_event(WorkEvent::StatusChange(break_uuid, new_status));
-                            self.break_modal_state.show(false);
-                            self.break_input_uuid = None;
-                            self.break_input_value.clear();
-                        }
-                        None => {
-                            println!("No matching staff member found for uuid {}.", break_uuid);
-                        }
-                    }
-                }
-            }
-            Message::CancelSubmitBreakInput => {
-                self.break_modal_state.show(false);
-                self.break_input_uuid = None;
-                self.break_input_value.clear();
-            }
-            Message::EndEvent => {
-                self.log_event(WorkEvent::EventOver);
             }
             Message::ExitApplication => {
-                for staff_member in self.staff.iter() {
-                    diesel::update(staff_member)
-                        .set(status.eq(staff_member.status))
-                        .execute(&self.connection)
-                        .expect(&format!("Error updating staff {}", staff_member.name));
-                }
-
+                stechuhr::save_staff(&self.shared.staff, &self.shared.connection);
                 self.should_exit = true;
+            }
+            Message::TabSelected(new_tab) => {
+                self.management.deauth();
+                self.active_tab = new_tab;
+            }
+            Message::Timetrack(timetrack_message) => {
+                self.timetrack.update(&mut self.shared, timetrack_message);
+            }
+            Message::Management(management_message) => {
+                self.management.update(&mut self.shared, management_message);
             }
         };
         Command::none()
@@ -176,112 +117,62 @@ impl Application for Stechuhr {
 
     // TODO what is '_?
     fn view(&mut self) -> Element<'_, Message> {
-        let mut staff_view = Column::new();
-        for staff_member in self.staff.iter() {
-            staff_view = staff_view.push(Text::new(format!(
-                "{}: {}",
-                staff_member.name,
-                staff_member.status.to_string()
-            )));
-        }
+        // let theme = self
+        //     .settings_tab
+        //     .settings()
+        //     .tab_bar_theme
+        //     .unwrap_or_default();
 
-        let content = Container::new(
-            Column::new()
-                .padding(20)
-                .push(Text::new(
-                    self.current_time
-                        .format_localized("%T, %A, %e. %B %Y", Locale::de_DE)
-                        .to_string(),
-                ))
-                .push(staff_view)
-                .push(
-                    TextInput::new(
-                        &mut self.break_input_state,
-                        "Deine PIN",
-                        &self.break_input_value,
-                        Message::ChangeBreakInput,
-                    )
-                    .on_submit(Message::SubmitBreakInput),
-                )
-                .push(
-                    Button::new(
-                        &mut self.end_party_button_state,
-                        Text::new("Event beenden")
-                            .horizontal_alignment(HorizontalAlignment::Center),
-                    )
-                    .on_press(Message::EndEvent),
-                )
-                .push(
-                    Button::new(
-                        &mut self.exit_button_state,
-                        Text::new("Exit").horizontal_alignment(HorizontalAlignment::Center),
-                    )
-                    .on_press(Message::ExitApplication),
-                ),
-        );
-
-        let break_modal_value = if let Some(break_uuid) = self.break_input_uuid {
-            match StaffMember::get_by_uuid_mut(&mut self.staff, break_uuid) {
-                Some(staff_member) => format!(
-                    "{} wird auf '{}' gesetzt. Korrekt?",
-                    staff_member.name,
-                    WorkStatus::from_bool(staff_member.status).toggle()
-                ),
-                None => {
-                    String::from("Error: Kein Mitarbeiter gefunden. Bitte Adrian Bescheid sagen.")
-                }
-            }
-        } else {
-            String::from("Warnung: kein Mitarbeiter ausgewählt.")
-        };
-
-        let modal = Modal::new(&mut self.break_modal_state, content, move |state| {
-            Card::new(
-                Text::new("Änderung des Arbeitsstatus"),
-                Text::new(break_modal_value.clone()),
+        Tabs::new(self.active_tab, Message::TabSelected)
+            .push(
+                self.timetrack.tab_label(),
+                self.timetrack.view(&mut self.shared),
             )
-            .foot(
-                Row::new()
-                    .spacing(10)
-                    .padding(5)
-                    .width(Length::Fill)
-                    .push(
-                        Button::new(
-                            &mut state.confirm_state,
-                            Text::new("Ok").horizontal_alignment(HorizontalAlignment::Center),
-                        )
-                        .width(Length::Fill)
-                        .on_press(Message::ConfirmSubmitBreakInput),
-                    )
-                    .push(
-                        Button::new(
-                            &mut state.cancel_state,
-                            Text::new("Zurück").horizontal_alignment(HorizontalAlignment::Center),
-                        )
-                        .width(Length::Fill)
-                        .on_press(Message::CancelSubmitBreakInput),
-                    ),
+            .push(
+                self.management.tab_label(),
+                self.management.view(&mut self.shared),
             )
-            .max_width(300)
-            //.width(Length::Shrink)
-            .on_close(Message::CancelSubmitBreakInput)
+            // .push(self.counter_tab.tab_label(), self.counter_tab.view())
+            // .push(self.settings_tab.tab_label(), self.settings_tab.view())
+            // .tab_bar_style(theme)
+            // .icon_font(ICON_FONT)
+            .tab_bar_position(iced_aw::TabBarPosition::Top)
             .into()
-        })
-        .backdrop(Message::CancelSubmitBreakInput)
-        .on_esc(Message::CancelSubmitBreakInput)
-        .into();
-
-        modal
     }
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             iced::time::every(std::time::Duration::from_secs(1))
                 .map(|_| Message::Tick(Local::now())),
-            iced_native::subscription::events_with(|event, _status| match dbg!(event) {
+            iced_native::subscription::events_with(|event, _status| match event {
                 Event::Window(window::Event::CloseRequested) => Some(Message::ExitApplication),
                 _ => None,
             }),
         ])
     }
+}
+
+trait Tab {
+    type Message;
+
+    fn title(&self) -> String;
+
+    fn tab_label(&self) -> TabLabel;
+
+    fn view(&mut self, shared: &mut SharedData) -> Element<'_, Self::Message> {
+        let column = Column::new()
+            .spacing(20)
+            .push(Text::new(self.title()).size(HEADER_SIZE))
+            .push(self.content(shared));
+
+        Container::new(column)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Align::Center)
+            .align_y(Align::Start)
+            .padding(TAB_PADDING)
+            .into()
+    }
+
+    fn content(&mut self, shared: &mut SharedData) -> Element<'_, Self::Message>;
 }

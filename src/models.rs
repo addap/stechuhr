@@ -105,7 +105,8 @@ impl StaffMember {
     }
 }
 
-/* Build my own queryable to parse the WorkStatus of a StaffMember. */
+/* Build my own queryable to parse the WorkStatus of a StaffMember.
+ * But since status is now a simple boolean, it could also be derived. */
 /* from https://docs.diesel.rs/diesel/deserialize/trait.Queryable.html */
 type DB = diesel::sqlite::Sqlite;
 
