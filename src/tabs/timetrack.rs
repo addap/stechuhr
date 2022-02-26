@@ -1,11 +1,9 @@
-use chrono::{DateTime, Local, Locale};
-use diesel::prelude::*;
+use chrono::Locale;
 use iced::{
-    button, executor, text_input, Application, Button, Column, Command, Container, Element,
-    HorizontalAlignment, Length, Row, Settings, Subscription, Text, TextInput,
+    button, text_input, Button, Column, Container, Element, HorizontalAlignment, Length, Row, Text,
+    TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
-use iced_native::{window, Event};
 use stechuhr::models::*;
 
 use crate::{Message, SharedData, Tab};
@@ -94,9 +92,9 @@ impl TimetrackTab {
     }
 }
 
-impl Tab for TimetrackTab {
+impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
     // TODO what is this for?
-    type Message = Message;
+    // type Message = Message;
 
     fn title(&self) -> String {
         String::from("Timetrack")
@@ -106,7 +104,7 @@ impl Tab for TimetrackTab {
         TabLabel::Text(self.title())
     }
 
-    fn content(&mut self, shared: &mut SharedData) -> Element<'_, Self::Message> {
+    fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
         //view
         let mut staff_view = Column::new();
         for staff_member in shared.staff.iter() {

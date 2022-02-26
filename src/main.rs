@@ -1,10 +1,10 @@
-use chrono::{DateTime, Local, Locale};
+use chrono::{DateTime, Local};
 use diesel::prelude::*;
 use iced::{
-    button, executor, text_input, Align, Application, Button, Column, Command, Container, Element,
-    HorizontalAlignment, Length, Row, Settings, Subscription, Text, TextInput,
+    executor, Align, Application, Column, Command, Container, Element, Length, Settings,
+    Subscription, Text,
 };
-use iced_aw::{modal, Card, Modal, TabLabel, Tabs};
+use iced_aw::{TabLabel, Tabs};
 use iced_native::{window, Event};
 use stechuhr::models::*;
 
@@ -69,18 +69,21 @@ impl Application for Stechuhr {
     }
 
     fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
+        let staff = stechuhr::load_staff(&connection);
+        let management = ManagementTab::new(&staff);
+
         (
             Self {
                 shared: SharedData {
                     current_time: Local::now(),
-                    staff: stechuhr::load_staff(&connection),
+                    staff,
                     events: Vec::new(),
                     connection: connection,
                 },
                 active_tab: 0,
                 should_exit: false,
                 timetrack: TimetrackTab::new(),
-                management: ManagementTab::new(),
+                management,
             },
             Command::none(),
         )
@@ -93,7 +96,7 @@ impl Application for Stechuhr {
     fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
         match message {
             Message::Tick(local_time) => {
-                if local_time > self.shared.current_time {
+                if dbg!(local_time) > self.shared.current_time {
                     self.shared.current_time = local_time;
                 }
             }
@@ -116,7 +119,7 @@ impl Application for Stechuhr {
     }
 
     // TODO what is '_?
-    fn view(&mut self) -> Element<'_, Message> {
+    fn view<'a>(&'a mut self) -> Element<'_, Message> {
         // let theme = self
         //     .settings_tab
         //     .settings()
@@ -143,7 +146,7 @@ impl Application for Stechuhr {
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             iced::time::every(std::time::Duration::from_secs(1))
-                .map(|_| Message::Tick(Local::now())),
+                .map(|_| Message::Tick(dbg!(Local::now()))),
             iced_native::subscription::events_with(|event, _status| match event {
                 Event::Window(window::Event::CloseRequested) => Some(Message::ExitApplication),
                 _ => None,
@@ -152,14 +155,14 @@ impl Application for Stechuhr {
     }
 }
 
-trait Tab {
-    type Message;
+trait Tab<'a: 'b, 'b> {
+    // type Message;
 
     fn title(&self) -> String;
 
     fn tab_label(&self) -> TabLabel;
 
-    fn view(&mut self, shared: &mut SharedData) -> Element<'_, Self::Message> {
+    fn view(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
         let column = Column::new()
             .spacing(20)
             .push(Text::new(self.title()).size(HEADER_SIZE))
@@ -174,5 +177,5 @@ trait Tab {
             .into()
     }
 
-    fn content(&mut self, shared: &mut SharedData) -> Element<'_, Self::Message>;
+    fn content(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message>;
 }
