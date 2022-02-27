@@ -1,13 +1,19 @@
-use crate::schema::staff;
-use chrono::{DateTime, Local};
-use diesel::{
-    deserialize::Queryable,
-    serialize::{self, ToSql},
-    sql_types,
-};
-use std::fmt;
+use crate::schema::{events, staff};
+use chrono;
+use chrono::prelude::*;
+use chrono::{DateTime, Local, NaiveDateTime, Utc};
+use diesel::deserialize::{self, FromSql, Queryable};
+use diesel::serialize::{self, Output, ToSql};
+use diesel::sql_types::*;
+use diesel::{prelude::*, sql_types};
+use iced_native::clipboard::Null;
+use serde::{Deserialize, Serialize};
+use serde_json;
+use serde_lexpr;
+use std::{fmt, io};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[sql_type = "Bool"]
 pub enum WorkStatus {
     Away,
     Working,
@@ -41,16 +47,19 @@ impl fmt::Display for WorkStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[sql_type = "Text"]
 pub enum WorkEvent {
-    StatusChange(i32, bool),
+    StatusChange(i32, WorkStatus),
     EventStart,
     EventOver,
 }
 
-#[derive(Queryable)]
+#[derive(Debug, Clone, Insertable, AsExpression)]
+#[table_name = "events"]
 pub struct WorkEventT {
-    pub timestamp: DateTime<Local>,
+    pub created_at: NaiveDateTime,
+    #[column_name = "event_json"]
     pub event: WorkEvent,
 }
 
@@ -58,18 +67,31 @@ pub struct WorkEventT {
 // using sql_type annotation as described below does not work because it is not found
 // https://github.com/diesel-rs/diesel/blob/1.4.x/guide_drafts/trait_derives.md#aschangeset
 // https://noyez.gitlab.io/post/2018-08-05-a-small-custom-bool-type-in-diesel/
-#[derive(Debug, Clone, AsChangeset, Identifiable)]
+#[derive(Debug, Clone, AsExpression, AsChangeset, Identifiable)]
 #[table_name = "staff"]
 #[primary_key(uuid)]
 pub struct StaffMember {
-    pub uuid: i32,
+    uuid: i32,
     pub name: String,
     pub pin: String,
     pub cardid: String,
-    pub status: bool,
+    pub status: WorkStatus,
+}
+
+#[derive(Debug, Clone, Insertable)]
+#[table_name = "staff"]
+pub struct NewStaffMember {
+    // TODO how to return strig reference from getter? Lifetime annotation on &str did not work
+    pub name: String,
+    pub pin: String,
+    pub cardid: String,
 }
 
 impl StaffMember {
+    pub fn uuid(&self) -> i32 {
+        self.uuid
+    }
+
     // fn get_by_pin_or_card_id(
     //     staff: &HashMap<u32, StaffMember>,
     //     ident: &str,
@@ -105,13 +127,27 @@ impl StaffMember {
     }
 }
 
+impl NewStaffMember {
+    pub fn new(name: String, pin: String, cardid: String) -> Self {
+        Self { name, pin, cardid }
+    }
+}
+
 /* Build my own queryable to parse the WorkStatus of a StaffMember.
  * But since status is now a simple boolean, it could also be derived. */
 /* from https://docs.diesel.rs/diesel/deserialize/trait.Queryable.html */
-type DB = diesel::sqlite::Sqlite;
+// type DB = diesel::sqlite::Sqlite;
+use diesel::backend::Backend;
 
-impl Queryable<staff::SqlType, DB> for StaffMember {
-    type Row = (i32, String, String, String, bool);
+impl<DB> Queryable<staff::SqlType, DB> for StaffMember
+where
+    DB: Backend,
+    bool: FromSql<Bool, DB>,
+    String: FromSql<Text, DB>,
+    i32: FromSql<Integer, DB>,
+    WorkStatus: FromSql<Bool, DB>,
+{
+    type Row = (i32, String, String, String, WorkStatus);
 
     fn build(row: Self::Row) -> Self {
         StaffMember {
@@ -124,11 +160,81 @@ impl Queryable<staff::SqlType, DB> for StaffMember {
     }
 }
 
-impl ToSql<sql_types::Bool, DB> for WorkStatus {
-    fn to_sql<W: std::io::Write>(&self, out: &mut serialize::Output<W, DB>) -> serialize::Result {
-        match *self {
-            WorkStatus::Away => ToSql::<sql_types::Bool, DB>::to_sql(&false, out),
-            WorkStatus::Working => ToSql::<sql_types::Bool, DB>::to_sql(&true, out),
+impl<DB> Queryable<events::SqlType, DB> for WorkEventT
+where
+    DB: Backend,
+    i32: FromSql<Integer, DB>,
+    NaiveDateTime: FromSql<Timestamp, DB>,
+    WorkEvent: FromSql<Text, DB>,
+{
+    type Row = (i32, NaiveDateTime, WorkEvent);
+
+    fn build(row: Self::Row) -> Self {
+        WorkEventT {
+            created_at: row.1,
+            event: row.2,
         }
     }
 }
+
+impl<DB> ToSql<Bool, DB> for WorkStatus
+where
+    DB: Backend,
+    bool: ToSql<Bool, DB>,
+{
+    fn to_sql<W: std::io::Write>(&self, out: &mut serialize::Output<W, DB>) -> serialize::Result {
+        match *self {
+            WorkStatus::Away => ToSql::<Bool, DB>::to_sql(&false, out),
+            WorkStatus::Working => ToSql::<Bool, DB>::to_sql(&true, out),
+        }
+    }
+}
+
+impl<DB> FromSql<Bool, DB> for WorkStatus
+where
+    DB: Backend,
+    bool: FromSql<Bool, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+        let value = bool::from_sql(bytes)?;
+        Ok(WorkStatus::from_bool(value))
+    }
+}
+
+impl<DB> ToSql<Text, DB> for WorkEvent
+where
+    DB: Backend,
+{
+    fn to_sql<W>(&self, out: &mut Output<W, DB>) -> serialize::Result
+    where
+        W: io::Write,
+    {
+        let value = serde_lexpr::to_string(self)?;
+        <String as ToSql<Text, DB>>::to_sql(&value, out)
+    }
+}
+
+impl<DB> FromSql<Text, DB> for WorkEvent
+where
+    DB: Backend,
+    String: FromSql<Text, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+        let value = String::from_sql(bytes)?;
+        Ok(serde_lexpr::from_str(&value)?)
+    }
+}
+
+// impl<DB: Backend> FromSql<SmallInt, DB> for RecordType
+// where
+//     i16: FromSql<SmallInt, DB>,
+// {
+//     fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+//         let v = i16::from_sql(bytes)?;
+//         Ok(match v {
+//             1 => RecordType::A,
+//             2 => RecordType::B,
+//             _ => return Err("replace me with a real error".into()),
+//         })
+//     }
+// }

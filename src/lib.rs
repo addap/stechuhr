@@ -5,7 +5,7 @@ pub mod schema;
 extern crate diesel;
 use diesel::prelude::*;
 use dotenv::dotenv;
-use models::StaffMember;
+use models::{NewStaffMember, StaffMember, WorkEventT};
 use std::env;
 
 pub fn establish_connection() -> SqliteConnection {
@@ -25,12 +25,52 @@ pub fn load_staff(connection: &SqliteConnection) -> Vec<StaffMember> {
 }
 
 pub fn save_staff(staff_v: &Vec<StaffMember>, connection: &SqliteConnection) {
-    use schema::staff::dsl::*;
-
     for staff_member in staff_v.iter() {
         diesel::update(staff_member)
-            .set(status.eq(staff_member.status))
+            .set(staff_member)
             .execute(connection)
             .expect(&format!("Error updating staff {}", staff_member.name));
     }
+}
+
+pub fn insert_staff(staff_member: NewStaffMember, connection: &SqliteConnection) -> StaffMember {
+    // TODO uniqueness checks, so return Result
+    use schema::staff::dsl::*;
+
+    diesel::insert_into(staff)
+        .values(&staff_member)
+        .execute(connection)
+        .expect(&format!("Error inserting new staff {}", staff_member.name));
+
+    let mut newly_inserted = staff
+        .filter(pin.eq(staff_member.pin))
+        .limit(1)
+        .load::<StaffMember>(connection)
+        .expect(&format!(
+            "Error loading newly inserted staff {}",
+            staff_member.name
+        ));
+
+    let newly_inserted = newly_inserted.remove(0);
+
+    newly_inserted
+}
+
+pub fn save_event(event: WorkEventT, connection: &SqliteConnection) {
+    use schema::events::dsl::*;
+
+    diesel::insert_into(events)
+        .values(&event)
+        .execute(connection)
+        .expect("Error inserting new event");
+}
+
+pub fn print_events(connection: &SqliteConnection) {
+    use schema::events::dsl::*;
+
+    let evts = events
+        .load::<WorkEventT>(connection)
+        .expect("Error reading events");
+
+    println!("Events: {:?}", evts);
 }

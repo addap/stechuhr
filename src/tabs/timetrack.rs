@@ -38,7 +38,7 @@ impl TimetrackTab {
             break_input_value: String::new(),
             break_input_uuid: None,
             end_party_button_state: button::State::default(),
-            break_input_state: text_input::State::new(),
+            break_input_state: text_input::State::default(),
             // TODO why does State not take the type argument <BreakModalState> here?
             break_modal_state: modal::State::default(),
         }
@@ -60,7 +60,7 @@ impl TimetrackTab {
                         StaffMember::get_by_pin_or_card_id(&shared.staff, input)
                     {
                         self.break_modal_state.show(true);
-                        self.break_input_uuid = Some(staff_member.uuid);
+                        self.break_input_uuid = Some(staff_member.uuid());
                     } else {
                         println!("No matching staff member found for input {}.", input);
                     }
@@ -72,7 +72,7 @@ impl TimetrackTab {
                 if let Some(break_uuid) = self.break_input_uuid {
                     let staff_member = StaffMember::get_by_uuid_mut(&mut shared.staff, break_uuid)
                         .expect("uuid does not yield a staff member");
-                    let new_status = !staff_member.status;
+                    let new_status = staff_member.status.toggle();
                     staff_member.status = new_status;
                     shared.log_event(WorkEvent::StatusChange(break_uuid, new_status));
                     self.break_modal_state.show(false);
@@ -87,6 +87,7 @@ impl TimetrackTab {
             }
             TimetrackMessage::EndEvent => {
                 shared.log_event(WorkEvent::EventOver);
+                stechuhr::print_events(&shared.connection);
             }
         }
     }
@@ -150,7 +151,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
             format!(
                 "{} wird auf '{}' gesetzt. Korrekt?",
                 staff_member.name,
-                WorkStatus::from_bool(staff_member.status).toggle()
+                staff_member.status.toggle()
             )
         } else {
             String::from("Warnung: kein Mitarbeiter ausgewählt. Bitte Adrian Bescheid geben.")

@@ -28,16 +28,18 @@ pub fn main() -> iced::Result {
 pub struct SharedData {
     current_time: DateTime<Local>,
     staff: Vec<StaffMember>,
-    events: Vec<WorkEventT>,
     connection: SqliteConnection,
 }
 
 impl SharedData {
     fn log_event(&mut self, event: WorkEvent) {
-        self.events.push(WorkEventT {
-            timestamp: Local::now(),
-            event: event,
-        });
+        stechuhr::save_event(
+            WorkEventT {
+                created_at: Local::now().naive_local(),
+                event: event,
+            },
+            &self.connection,
+        );
     }
 }
 
@@ -77,7 +79,6 @@ impl Application for Stechuhr {
                 shared: SharedData {
                     current_time: Local::now(),
                     staff,
-                    events: Vec::new(),
                     connection: connection,
                 },
                 active_tab: 0,
@@ -96,7 +97,7 @@ impl Application for Stechuhr {
     fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
         match message {
             Message::Tick(local_time) => {
-                if dbg!(local_time) > self.shared.current_time {
+                if local_time > self.shared.current_time {
                     self.shared.current_time = local_time;
                 }
             }
@@ -146,7 +147,7 @@ impl Application for Stechuhr {
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             iced::time::every(std::time::Duration::from_secs(1))
-                .map(|_| Message::Tick(dbg!(Local::now()))),
+                .map(|_| Message::Tick(Local::now())),
             iced_native::subscription::events_with(|event, _status| match event {
                 Event::Window(window::Event::CloseRequested) => Some(Message::ExitApplication),
                 _ => None,

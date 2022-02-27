@@ -1,8 +1,8 @@
 table! {
     events (id) {
         id -> Integer,
-        timestamp -> Text,
-        event -> Binary,
+        created_at -> Timestamp,
+        event_json -> Text,
     }
 }
 
