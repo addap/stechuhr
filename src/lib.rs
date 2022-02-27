@@ -65,12 +65,14 @@ pub fn save_event(event: WorkEventT, connection: &SqliteConnection) {
         .expect("Error inserting new event");
 }
 
-pub fn print_events(connection: &SqliteConnection) {
+pub fn load_events(connection: &SqliteConnection) -> Vec<WorkEventT> {
     use schema::events::dsl::*;
 
     let evts = events
+        // .filter()
+        .order_by(created_at.asc())
         .load::<WorkEventT>(connection)
-        .expect("Error reading events");
+        .expect("Error loading events.");
 
-    println!("Events: {:?}", evts);
+    evts
 }

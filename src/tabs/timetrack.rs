@@ -87,7 +87,6 @@ impl TimetrackTab {
             }
             TimetrackMessage::EndEvent => {
                 shared.log_event(WorkEvent::EventOver);
-                stechuhr::print_events(&shared.connection);
             }
         }
     }
@@ -129,7 +128,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
                 .push(
                     TextInput::new(
                         &mut self.break_input_state,
-                        "Deine PIN",
+                        "Deine PIN/Dongle swipen",
                         &self.break_input_value,
                         TimetrackMessage::ChangeBreakInput,
                     )

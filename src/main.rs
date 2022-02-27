@@ -10,6 +10,7 @@ use stechuhr::models::*;
 
 mod tabs;
 use tabs::management::{ManagementMessage, ManagementTab};
+use tabs::statistics::{StatsMessage, StatsTab};
 use tabs::timetrack::{TimetrackMessage, TimetrackTab};
 
 const HEADER_SIZE: u16 = 32;
@@ -49,7 +50,7 @@ struct Stechuhr {
     should_exit: bool,
     timetrack: TimetrackTab,
     management: ManagementTab,
-    // generate: GenerateTab,
+    statistics: StatsTab,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +60,7 @@ enum Message {
     TabSelected(usize),
     Timetrack(TimetrackMessage),
     Management(ManagementMessage),
+    Statistics(StatsMessage),
 }
 
 impl Application for Stechuhr {
@@ -85,6 +87,7 @@ impl Application for Stechuhr {
                 should_exit: false,
                 timetrack: TimetrackTab::new(),
                 management,
+                statistics: StatsTab::new(),
             },
             Command::none(),
         )
@@ -102,6 +105,7 @@ impl Application for Stechuhr {
                 }
             }
             Message::ExitApplication => {
+                println!("exit");
                 stechuhr::save_staff(&self.shared.staff, &self.shared.connection);
                 self.should_exit = true;
             }
@@ -114,6 +118,9 @@ impl Application for Stechuhr {
             }
             Message::Management(management_message) => {
                 self.management.update(&mut self.shared, management_message);
+            }
+            Message::Statistics(stats_message) => {
+                self.statistics.update(&mut self.shared, stats_message);
             }
         };
         Command::none()
@@ -136,8 +143,10 @@ impl Application for Stechuhr {
                 self.management.tab_label(),
                 self.management.view(&mut self.shared),
             )
-            // .push(self.counter_tab.tab_label(), self.counter_tab.view())
-            // .push(self.settings_tab.tab_label(), self.settings_tab.view())
+            .push(
+                self.statistics.tab_label(),
+                self.statistics.view(&mut self.shared),
+            )
             // .tab_bar_style(theme)
             // .icon_font(ICON_FONT)
             .tab_bar_position(iced_aw::TabBarPosition::Top)
