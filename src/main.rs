@@ -1,3 +1,8 @@
+extern crate csv;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+
 use chrono::{DateTime, Local};
 use diesel::prelude::*;
 use iced::{

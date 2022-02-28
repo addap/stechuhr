@@ -2358,6 +2358,7 @@ dependencies = [
  "iced_native",
  "serde",
  "serde-lexpr",
+ "serde_derive",
  "serde_json",
  "time 0.3.7",
 ]

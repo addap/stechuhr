@@ -1,14 +1,10 @@
 use crate::schema::{events, staff};
 use chrono;
-use chrono::prelude::*;
-use chrono::{DateTime, Local, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use diesel::deserialize::{self, FromSql, Queryable};
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::*;
-use diesel::{prelude::*, sql_types};
-use iced_native::clipboard::Null;
 use serde::{Deserialize, Serialize};
-use serde_json;
 use serde_lexpr;
 use std::{fmt, io};
 
@@ -119,6 +115,15 @@ impl StaffMember {
 
     pub fn get_by_uuid_mut<'a>(staff: &'a mut Vec<Self>, uuid: i32) -> Option<&'a mut Self> {
         for staff_member in staff.iter_mut() {
+            if staff_member.uuid == uuid {
+                return Some(staff_member);
+            }
+        }
+        None
+    }
+
+    pub fn get_by_uuid<'a>(staff: &'a Vec<Self>, uuid: i32) -> Option<&'a Self> {
+        for staff_member in staff.iter() {
             if staff_member.uuid == uuid {
                 return Some(staff_member);
             }
