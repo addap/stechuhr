@@ -8,6 +8,9 @@ use stechuhr::models::*;
 
 use crate::{Message, SharedData, Tab};
 
+const PIN_LENGTH: usize = 4;
+const CARDID_LENGTH: usize = 10;
+
 pub struct TimetrackTab {
     break_input_value: String,
     break_input_uuid: Option<i32>,
@@ -55,7 +58,7 @@ impl TimetrackTab {
             TimetrackMessage::SubmitBreakInput => {
                 let input = self.break_input_value.trim();
 
-                if input.len() == 4 || input.len() == 6 {
+                if input.len() == PIN_LENGTH || input.len() == CARDID_LENGTH {
                     if let Some(staff_member) =
                         StaffMember::get_by_pin_or_card_id(&shared.staff, input)
                     {
