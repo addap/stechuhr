@@ -47,10 +47,20 @@ impl TimetrackTab {
         }
     }
 
-    pub fn update(&mut self, shared: &mut SharedData, message: TimetrackMessage) {
-        // always focus the input
-        self.break_input_state.focus();
+    fn handle_confirm_submit_break_input(&mut self, shared: &mut SharedData) {
+        if let Some(break_uuid) = self.break_input_uuid {
+            let staff_member = StaffMember::get_by_uuid_mut(&mut shared.staff, break_uuid)
+                .expect("uuid does not yield a staff member");
+            let new_status = staff_member.status.toggle();
+            staff_member.status = new_status;
+            shared.log_event(WorkEvent::StatusChange(break_uuid, new_status));
+            self.break_modal_state.show(false);
+            self.break_input_uuid = None;
+            self.break_input_value.clear();
+        }
+    }
 
+    pub fn update(&mut self, shared: &mut SharedData, message: TimetrackMessage) {
         match message {
             TimetrackMessage::ChangeBreakInput(value) => {
                 self.break_input_value = value;
@@ -72,16 +82,7 @@ impl TimetrackTab {
                 }
             }
             TimetrackMessage::ConfirmSubmitBreakInput => {
-                if let Some(break_uuid) = self.break_input_uuid {
-                    let staff_member = StaffMember::get_by_uuid_mut(&mut shared.staff, break_uuid)
-                        .expect("uuid does not yield a staff member");
-                    let new_status = staff_member.status.toggle();
-                    staff_member.status = new_status;
-                    shared.log_event(WorkEvent::StatusChange(break_uuid, new_status));
-                    self.break_modal_state.show(false);
-                    self.break_input_uuid = None;
-                    self.break_input_value.clear();
-                }
+                self.handle_confirm_submit_break_input(shared);
             }
             TimetrackMessage::CancelSubmitBreakInput => {
                 self.break_modal_state.show(false);
@@ -108,6 +109,14 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
     }
 
     fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
+        /* Normally the textinput must be focussed so that we can just swipe a rfid tag anytime.
+         * But when the modal is open, we must unfocus, else it will capture an 'enter' press meant to close the modal that should be handled in the subcriptions in main.rs */
+        if self.break_modal_state.is_shown() {
+            self.break_input_state.unfocus();
+        } else {
+            self.break_input_state.focus();
+        }
+
         //view
         let mut staff_view = Column::new();
         for staff_member in shared.staff.iter() {

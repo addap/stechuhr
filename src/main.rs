@@ -10,7 +10,7 @@ use iced::{
     Subscription, Text,
 };
 use iced_aw::{TabLabel, Tabs};
-use iced_native::{window, Event};
+use iced_native::{event::Status, keyboard, window, Event};
 use stechuhr::models::*;
 
 mod tabs;
@@ -111,7 +111,7 @@ impl Application for Stechuhr {
             }
             Message::ExitApplication => {
                 println!("exit");
-                stechuhr::save_staff(&self.shared.staff, &self.shared.connection);
+                stechuhr::update_staff(&self.shared.staff, &self.shared.connection);
                 self.should_exit = true;
             }
             Message::TabSelected(new_tab) => {
@@ -162,9 +162,21 @@ impl Application for Stechuhr {
         Subscription::batch([
             iced::time::every(std::time::Duration::from_secs(1))
                 .map(|_| Message::Tick(Local::now())),
-            iced_native::subscription::events_with(|event, _status| match event {
-                Event::Window(window::Event::CloseRequested) => Some(Message::ExitApplication),
-                _ => None,
+            iced_native::subscription::events_with(|event, status| match (status, event) {
+                /* event when closing the window e.g. mod+Shift+q in i3 */
+                (_, Event::Window(window::Event::CloseRequested)) => Some(Message::ExitApplication),
+                /* event when pressing enter key. At the moment we only send it to the timetrack tab to confirm the submission modal.
+                 * we need to be careful to only handle events that have not been caputed elsewhere, otherwise we use the enter again which originally opened the submission modal */
+                (
+                    Status::Ignored,
+                    Event::Keyboard(keyboard::Event::KeyPressed {
+                        key_code: keyboard::KeyCode::Enter,
+                        ..
+                    }),
+                ) => Some(Message::Timetrack(
+                    TimetrackMessage::ConfirmSubmitBreakInput,
+                )),
+                (_, _) => None,
             }),
         ])
     }
