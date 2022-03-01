@@ -75,12 +75,15 @@ impl<'a> MemberRow<'a> {
         state.cardid_value = new_cardid;
     }
 
-    fn submit(&mut self, idx: usize) {
+    fn submit(&mut self, idx: usize, connection: &SqliteConnection) {
         let state = self.states.get_mut(idx).unwrap();
         let staff_member = self.staff.get_mut(idx).unwrap();
 
         staff_member.pin.clone_from(&state.pin_value);
         staff_member.cardid.clone_from(&state.cardid_value);
+
+        // save in db
+        stechuhr::update_staff_member(staff_member, connection);
     }
 
     fn submit_new_row(
@@ -95,6 +98,7 @@ impl<'a> MemberRow<'a> {
                 .with_pin(&new_pin)
                 .with_cardid(&new_cardid),
         );
+        // save in DB
         let new_staff_member = stechuhr::insert_staff(
             NewStaffMember::new(new_name, new_pin, new_cardid),
             connection,
@@ -189,7 +193,8 @@ impl ManagementTab {
                     .change_cardid_state(idx, new_cardid)
             }
             ManagementMessage::SubmitRow(idx) => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states).submit(idx)
+                MemberRow::from(&mut shared.staff, &mut self.staff_states)
+                    .submit(idx, &shared.connection)
             }
             // ManagementMessage::DeleteRow(idx) => {
             //     MemberRow::from(&mut shared.staff, &mut self.staff_states)

@@ -24,12 +24,16 @@ pub fn load_staff(connection: &SqliteConnection) -> Vec<StaffMember> {
         .expect("Error loading staff from DB")
 }
 
-pub fn save_staff(staff_v: &Vec<StaffMember>, connection: &SqliteConnection) {
+pub fn update_staff_member(staff_member: &StaffMember, connection: &SqliteConnection) {
+    diesel::update(staff_member)
+        .set(staff_member)
+        .execute(connection)
+        .expect(&format!("Error updating staff {}", staff_member.name));
+}
+
+pub fn update_staff(staff_v: &Vec<StaffMember>, connection: &SqliteConnection) {
     for staff_member in staff_v.iter() {
-        diesel::update(staff_member)
-            .set(staff_member)
-            .execute(connection)
-            .expect(&format!("Error updating staff {}", staff_member.name));
+        update_staff_member(staff_member, connection);
     }
 }
 
