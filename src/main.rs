@@ -139,23 +139,26 @@ impl Application for Stechuhr {
         //     .tab_bar_theme
         //     .unwrap_or_default();
 
-        Tabs::new(self.active_tab, Message::TabSelected)
-            .push(
-                self.timetrack.tab_label(),
-                self.timetrack.view(&mut self.shared),
-            )
-            .push(
-                self.management.tab_label(),
-                self.management.view(&mut self.shared),
-            )
-            .push(
-                self.statistics.tab_label(),
-                self.statistics.view(&mut self.shared),
-            )
-            // .tab_bar_style(theme)
-            // .icon_font(ICON_FONT)
-            .tab_bar_position(iced_aw::TabBarPosition::Top)
-            .into()
+        Tabs::with_tabs(
+            self.active_tab,
+            vec![
+                (
+                    self.timetrack.tab_label(),
+                    self.timetrack.view(&mut self.shared),
+                ),
+                (
+                    self.management.tab_label(),
+                    self.management.view(&mut self.shared),
+                ),
+                (
+                    self.statistics.tab_label(),
+                    self.statistics.view(&mut self.shared),
+                ),
+            ],
+            Message::TabSelected,
+        )
+        .tab_bar_position(iced_aw::TabBarPosition::Top) // .height(Length::Fill),
+        .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -190,14 +193,18 @@ trait Tab<'a: 'b, 'b> {
     fn tab_label(&self) -> TabLabel;
 
     fn view(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
+        // An (TODO scrollable) event log
+        let logview = Column::new().push(Text::new("asd")).push(Text::new("fdg"));
+
         let column = Column::new()
             .spacing(20)
             .push(Text::new(self.title()).size(HEADER_SIZE))
-            .push(self.content(shared));
+            .push(Container::new(self.content(shared)).height(Length::FillPortion(80)))
+            .push(logview.height(Length::FillPortion(20)));
 
         Container::new(column)
             .width(Length::Fill)
-            .height(Length::Fill)
+            .height(Length::FillPortion(80))
             .align_x(Align::Center)
             .align_y(Align::Start)
             .padding(TAB_PADDING)
