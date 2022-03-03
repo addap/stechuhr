@@ -1,8 +1,10 @@
+pub mod date_ext;
 pub mod models;
 pub mod schema;
 
 #[macro_use]
 extern crate diesel;
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use dotenv::dotenv;
 use models::{NewStaffMember, StaffMember, WorkEventT};
@@ -69,11 +71,16 @@ pub fn save_event(event: WorkEventT, connection: &SqliteConnection) {
         .expect("Error inserting new event");
 }
 
-pub fn load_events(connection: &SqliteConnection) -> Vec<WorkEventT> {
+pub fn load_events(
+    start_time: NaiveDateTime,
+    end_time: NaiveDateTime,
+    connection: &SqliteConnection,
+) -> Vec<WorkEventT> {
     use schema::events::dsl::*;
 
     let evts = events
-        // .filter()
+        .filter(created_at.ge(start_time))
+        .filter(created_at.lt(end_time))
         .order_by(created_at.asc())
         .load::<WorkEventT>(connection)
         .expect("Error loading events.");
