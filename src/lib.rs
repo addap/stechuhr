@@ -7,7 +7,8 @@ extern crate diesel;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use dotenv::dotenv;
-use models::{NewStaffMember, StaffMember, WorkEventT};
+use models::{NewStaffMember, PasswordHash, StaffMember, WorkEventT};
+use pbkdf2::{password_hash::PasswordVerifier, Pbkdf2};
 use std::env;
 
 pub fn establish_connection() -> SqliteConnection {
@@ -62,11 +63,11 @@ pub fn insert_staff(staff_member: NewStaffMember, connection: &SqliteConnection)
     newly_inserted
 }
 
-pub fn save_event(event: WorkEventT, connection: &SqliteConnection) {
+pub fn save_event(new_event: WorkEventT, connection: &SqliteConnection) {
     use schema::events::dsl::*;
 
     diesel::insert_into(events)
-        .values(&event)
+        .values(&new_event)
         .execute(connection)
         .expect("Error inserting new event");
 }
@@ -83,7 +84,35 @@ pub fn load_events(
         .filter(created_at.lt(end_time))
         .order_by(created_at.asc())
         .load::<WorkEventT>(connection)
-        .expect("Error loading events.");
+        .expect("Error loading events");
 
     evts
+}
+
+pub fn save_password(new_password: PasswordHash, connection: &SqliteConnection) {
+    use schema::passwords::dsl::*;
+
+    diesel::insert_into(passwords)
+        .values(&new_password)
+        .execute(connection)
+        .expect("Error inserting new pasword");
+}
+
+pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
+    use schema::passwords::dsl::*;
+
+    let pws = passwords
+        .load::<PasswordHash>(connection)
+        .expect("Error loading passwords");
+
+    for pw in &pws {
+        if Pbkdf2
+            .verify_password(password.as_ref(), &pw.hash())
+            .is_ok()
+        {
+            return true;
+        }
+    }
+
+    return false;
 }

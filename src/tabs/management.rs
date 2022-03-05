@@ -115,7 +115,6 @@ impl<'a> MemberRow<'a> {
 pub struct ManagementTab {
     /* wether we are logged in */
     authorized: bool,
-    admin_password: String,
     admin_password_value: String,
     admin_password_state: text_input::State,
     /* management of staff */
@@ -156,7 +155,6 @@ impl ManagementTab {
     pub fn new(staff: &Vec<StaffMember>) -> Self {
         ManagementTab {
             authorized: false,
-            admin_password: String::from("blabla"),
             admin_password_value: String::from(""),
             admin_password_state: text_input::State::default(),
             staff_states: StaffMemberState::new_from_staff(staff),
@@ -177,7 +175,7 @@ impl ManagementTab {
                 self.admin_password_value = password;
             }
             ManagementMessage::SubmitPassword => {
-                if self.admin_password_value == self.admin_password {
+                if stechuhr::verify_password(self.admin_password_value.trim(), &shared.connection) {
                     self.auth();
                 } else {
                     // TODO mark pw field as red

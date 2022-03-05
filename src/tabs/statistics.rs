@@ -9,18 +9,13 @@
 // 3. go through events and compute sum of timeslices between Working-Away pairs
 // 4. dump the result in csv
 
-use chrono::{
-    Date, Datelike, Duration, FixedOffset, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime,
-    TimeZone, Timelike,
-};
+use chrono::{Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use iced::{button, Button, Column, Container, Element, Length, Row, Space, Text};
 use iced_aw::{
     date_picker::{self, DatePicker},
     TabLabel,
 };
-use iced_native::Widget;
 use std::cmp::min;
-use std::collections::{hash_map, HashMap};
 use stechuhr::date_ext::NaiveDateExt;
 use stechuhr::models::*;
 

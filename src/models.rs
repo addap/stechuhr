@@ -1,9 +1,10 @@
-use crate::schema::{events, staff};
+use crate::schema::{events, passwords, staff};
 use chrono;
 use chrono::NaiveDateTime;
 use diesel::deserialize::{self, FromSql, Queryable};
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::*;
+use pbkdf2::password_hash::PasswordHash as PBKDF2Hash;
 use serde::{Deserialize, Serialize};
 use serde_lexpr;
 use std::{fmt, io};
@@ -138,6 +139,28 @@ impl NewStaffMember {
     }
 }
 
+/// A pbkdf2 password hash string in PHC format.
+/// TODO could already parse PHC string in Queryable
+#[derive(Debug, AsExpression, Insertable)]
+#[table_name = "passwords"]
+pub struct PasswordHash {
+    phc: String,
+}
+
+impl PasswordHash {
+    pub fn new(phc: String) -> Self {
+        let parsed_hash = PBKDF2Hash::new(&phc).expect(&format!("Error parsing hash {}", phc));
+        match (parsed_hash.salt, parsed_hash.hash) {
+            (None, _) | (_, None) => panic!("hash or salt missing {}", phc),
+            _ => Self { phc },
+        }
+    }
+
+    pub fn hash(&self) -> PBKDF2Hash {
+        PBKDF2Hash::new(&self.phc).expect(&format!("Error parsing hash {}", self.phc))
+    }
+}
+
 /* Build my own queryable to parse the WorkStatus of a StaffMember.
  * But since status is now a simple boolean, it could also be derived. */
 /* from https://docs.diesel.rs/diesel/deserialize/trait.Queryable.html */
@@ -162,6 +185,19 @@ where
             cardid: row.3,
             status: row.4,
         }
+    }
+}
+
+impl<DB> Queryable<passwords::SqlType, DB> for PasswordHash
+where
+    DB: Backend,
+    i32: FromSql<Integer, DB>,
+    String: FromSql<Text, DB>,
+{
+    type Row = (i32, String);
+
+    fn build(row: Self::Row) -> Self {
+        PasswordHash::new(row.1)
     }
 }
 
