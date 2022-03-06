@@ -224,7 +224,7 @@ impl EventSM {
     fn process(&mut self, sm_uuid: i32, event: &WorkEventT) {
         match self.label {
             EventSMLabel::Away => match event.event {
-                WorkEvent::StatusChange(uuid, WorkStatus::Working) => {
+                WorkEvent::StatusChange(uuid, _, WorkStatus::Working) => {
                     if sm_uuid == uuid {
                         self.label = EventSMLabel::Working(event.created_at)
                     }
@@ -232,7 +232,7 @@ impl EventSM {
                 _ => {}
             },
             EventSMLabel::Working(start_time) => match event.event {
-                WorkEvent::StatusChange(uuid, WorkStatus::Away) if sm_uuid == uuid => {
+                WorkEvent::StatusChange(uuid, _, WorkStatus::Away) if sm_uuid == uuid => {
                     self.add_time(start_time, event.created_at);
                     self.label = EventSMLabel::Away;
                 }

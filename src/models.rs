@@ -35,7 +35,7 @@ impl WorkStatus {
 
 impl fmt::Display for WorkStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let str = match &self {
+        let str = match self {
             WorkStatus::Away => "Pause",
             WorkStatus::Working => "An der Arbeit",
         };
@@ -44,12 +44,26 @@ impl fmt::Display for WorkStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[derive(Debug, Clone, AsExpression, FromSqlRow, Serialize, Deserialize)]
 #[sql_type = "Text"]
 pub enum WorkEvent {
-    StatusChange(i32, WorkStatus),
+    StatusChange(i32, String, WorkStatus),
     EventStart,
     EventOver,
+}
+
+impl fmt::Display for WorkEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let str = match self {
+            WorkEvent::StatusChange(_, name, status) => {
+                format!("Status von {} wurde auf \"{}\" gesetzt", name, status)
+            }
+            WorkEvent::EventStart => String::from("Event gestartet"),
+            WorkEvent::EventOver => String::from("Event gestoppt"),
+        };
+
+        fmt::Display::fmt(&str, f)
+    }
 }
 
 #[derive(Debug, Clone, Insertable, AsExpression)]

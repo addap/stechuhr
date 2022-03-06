@@ -51,9 +51,10 @@ impl TimetrackTab {
         if let Some(break_uuid) = self.break_input_uuid {
             let staff_member = StaffMember::get_by_uuid_mut(&mut shared.staff, break_uuid)
                 .expect("uuid does not yield a staff member");
+            let name = staff_member.name.clone();
             let new_status = staff_member.status.toggle();
             staff_member.status = new_status;
-            shared.log_event(WorkEvent::StatusChange(break_uuid, new_status));
+            shared.log_event(WorkEvent::StatusChange(break_uuid, name, new_status));
             self.break_modal_state.show(false);
             self.break_input_uuid = None;
             self.break_input_value.clear();

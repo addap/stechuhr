@@ -3,7 +3,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
 use iced::{
     executor, Align, Application, Column, Command, Container, Element, Length, Settings,
@@ -20,6 +20,7 @@ use tabs::timetrack::{TimetrackMessage, TimetrackTab};
 
 const HEADER_SIZE: u16 = 32;
 const TAB_PADDING: u16 = 16;
+const LOG_LENGTH: usize = 6;
 
 pub fn main() -> iced::Result {
     let connection = stechuhr::establish_connection();
@@ -34,18 +35,18 @@ pub fn main() -> iced::Result {
 pub struct SharedData {
     current_time: DateTime<Local>,
     staff: Vec<StaffMember>,
+    events: Vec<WorkEventT>,
     connection: SqliteConnection,
 }
 
 impl SharedData {
     fn log_event(&mut self, event: WorkEvent) {
-        stechuhr::save_event(
-            WorkEventT {
-                created_at: Local::now().naive_local(),
-                event: event,
-            },
-            &self.connection,
-        );
+        let eventt = WorkEventT {
+            created_at: Local::now().naive_local(),
+            event: event,
+        };
+        stechuhr::save_event(&eventt, &self.connection);
+        self.events.push(eventt);
     }
 }
 
@@ -86,6 +87,7 @@ impl Application for Stechuhr {
                 shared: SharedData {
                     current_time: Local::now(),
                     staff,
+                    events: Vec::new(),
                     connection: connection,
                 },
                 active_tab: 0,
@@ -194,7 +196,22 @@ trait Tab<'a: 'b, 'b> {
 
     fn view(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
         // An (TODO scrollable) event log
-        let logview = Column::new().push(Text::new("asd")).push(Text::new("fdg"));
+        let logview = shared
+            .events
+            .iter()
+            // TODO better way to take the last n elements?
+            .rev()
+            .take(LOG_LENGTH)
+            .rev()
+            .fold(Column::new(), |column, eventt| {
+                let offset = *Local::now().offset();
+                let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
+                column.push(Text::new(format!(
+                    "{}: {}",
+                    time.format_localized("%T", Locale::de_DE).to_string(),
+                    eventt.event
+                )))
+            });
 
         let column = Column::new()
             .spacing(20)

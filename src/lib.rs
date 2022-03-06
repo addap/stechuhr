@@ -63,11 +63,11 @@ pub fn insert_staff(staff_member: NewStaffMember, connection: &SqliteConnection)
     newly_inserted
 }
 
-pub fn save_event(new_event: WorkEventT, connection: &SqliteConnection) {
+pub fn save_event(new_event: &WorkEventT, connection: &SqliteConnection) {
     use schema::events::dsl::*;
 
     diesel::insert_into(events)
-        .values(&new_event)
+        .values(new_event)
         .execute(connection)
         .expect("Error inserting new event");
 }
