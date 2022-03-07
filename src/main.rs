@@ -6,8 +6,8 @@ extern crate serde_derive;
 use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
 use iced::{
-    executor, Align, Application, Column, Command, Container, Element, Length, Settings,
-    Subscription, Text,
+    executor, scrollable, Align, Application, Column, Command, Container, Element, Length,
+    Scrollable, Settings, Subscription, Text,
 };
 use iced_aw::{TabLabel, Tabs};
 use iced_native::{event::Status, keyboard, window, Event};
@@ -141,7 +141,32 @@ impl Application for Stechuhr {
         //     .tab_bar_theme
         //     .unwrap_or_default();
 
-        Tabs::with_tabs(
+        // let mut scrollbar = Scrollable::new(&mut self.scroll_state)
+        //     .padding(10)
+        //     .spacing(10)
+        //     .width(Length::Fill)
+        //     .height(Length::Fill);
+
+        // TODO I want to use a scrollbar and snap to the bottom when a new event is added, but snapping is only supported in iced 0.4 which is not published on cargo yet
+        let scrollbar = Column::new()
+            .padding(10)
+            .spacing(10)
+            .width(Length::Fill)
+            .height(Length::Fill);
+        let logview = self.shared.events.iter().rev().take(LOG_LENGTH).rev().fold(
+            scrollbar,
+            |column, eventt| {
+                let offset = *Local::now().offset();
+                let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
+                column.push(Text::new(format!(
+                    "{}: {}",
+                    time.format_localized("%T", Locale::de_DE).to_string(),
+                    eventt.event
+                )))
+            },
+        );
+
+        let tabs = Tabs::with_tabs(
             self.active_tab,
             vec![
                 (
@@ -159,8 +184,12 @@ impl Application for Stechuhr {
             ],
             Message::TabSelected,
         )
-        .tab_bar_position(iced_aw::TabBarPosition::Top) // .height(Length::Fill),
-        .into()
+        .tab_bar_position(iced_aw::TabBarPosition::Top); // .height(Length::Fill),
+
+        Column::new()
+            .push(Container::new(tabs).height(Length::FillPortion(80)))
+            .push(logview.height(Length::FillPortion(20)))
+            .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -196,28 +225,11 @@ trait Tab<'a: 'b, 'b> {
 
     fn view(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
         // An (TODO scrollable) event log
-        let logview = shared
-            .events
-            .iter()
-            // TODO better way to take the last n elements?
-            .rev()
-            .take(LOG_LENGTH)
-            .rev()
-            .fold(Column::new(), |column, eventt| {
-                let offset = *Local::now().offset();
-                let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
-                column.push(Text::new(format!(
-                    "{}: {}",
-                    time.format_localized("%T", Locale::de_DE).to_string(),
-                    eventt.event
-                )))
-            });
 
         let column = Column::new()
             .spacing(20)
             .push(Text::new(self.title()).size(HEADER_SIZE))
-            .push(Container::new(self.content(shared)).height(Length::FillPortion(80)))
-            .push(logview.height(Length::FillPortion(20)));
+            .push(Container::new(self.content(shared)));
 
         Container::new(column)
             .width(Length::Fill)
