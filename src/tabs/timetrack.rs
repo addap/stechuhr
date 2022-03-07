@@ -119,14 +119,16 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
         }
 
         //view
-        let mut staff_view = Column::new();
-        for staff_member in shared.staff.iter() {
-            staff_view = staff_view.push(Text::new(format!(
-                "{}: {}",
-                staff_member.name,
-                staff_member.status.to_string()
-            )));
-        }
+        let staff_view = shared
+            .staff
+            .iter()
+            .fold(Column::new(), |staff_view, staff_member| {
+                staff_view.push(Text::new(format!(
+                    "{}: {}",
+                    staff_member.name,
+                    staff_member.status.to_string()
+                )))
+            });
 
         let content = Container::new(
             Column::new()

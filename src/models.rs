@@ -103,24 +103,12 @@ impl StaffMember {
         self.uuid
     }
 
-    // fn get_by_pin_or_card_id(
-    //     staff: &HashMap<u32, StaffMember>,
-    //     ident: &str,
-    // ) -> Option<(u32, StaffMember)> {
-    //     for (uuid, staff_member) in staff.iter() {
-    //         if staff_member.pin == ident || staff_member.card_id == ident {
-    //             return Some((*uuid, staff_member.clone()));
-    //         }
-    //     }
-    //     None
-    // }
-
     // DONE can I use lifetimes to return a reference to the staffmember?
     // yes, by adding the generic lifetime parameter everywhere
     // TODO is it possible/useful/necessary to "pull out" the lifetime from the Option type?
     // INVARIANT: pins and cardids are disjoint
-    pub fn get_by_pin_or_card_id<'a>(staff: &'a Vec<Self>, ident: &str) -> Option<&'a Self> {
-        for staff_member in staff.iter() {
+    pub fn get_by_pin_or_card_id<'a>(staff: &'a [Self], ident: &str) -> Option<&'a Self> {
+        for staff_member in staff {
             if staff_member.pin == ident || staff_member.cardid == ident {
                 return Some(staff_member);
             }
@@ -137,8 +125,8 @@ impl StaffMember {
         None
     }
 
-    pub fn get_by_uuid<'a>(staff: &'a Vec<Self>, uuid: i32) -> Option<&'a Self> {
-        for staff_member in staff.iter() {
+    pub fn get_by_uuid<'a>(staff: &'a [Self], uuid: i32) -> Option<&'a Self> {
+        for staff_member in staff {
             if staff_member.uuid == uuid {
                 return Some(staff_member);
             }

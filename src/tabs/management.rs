@@ -42,16 +42,15 @@ impl Default for StaffMemberState {
 }
 
 impl StaffMemberState {
-    fn new_from_staff(staff: &Vec<StaffMember>) -> Vec<Self> {
-        let mut v = Vec::with_capacity(staff.capacity());
-        for staff_member in staff {
-            v.push(
+    fn new_from_staff(staff: &[StaffMember]) -> Vec<Self> {
+        staff
+            .iter()
+            .map(|staff_member| {
                 StaffMemberState::default()
                     .with_pin(&staff_member.pin)
-                    .with_cardid(&staff_member.cardid),
-            );
-        }
-        v
+                    .with_cardid(&staff_member.cardid)
+            })
+            .collect()
     }
 }
 /* Abstracts over the vector of staff members and the vector of their UI elements. */
@@ -152,7 +151,7 @@ impl ManagementTab {
         self.authorized = false;
     }
 
-    pub fn new(staff: &Vec<StaffMember>) -> Self {
+    pub fn new(staff: &[StaffMember]) -> Self {
         ManagementTab {
             authorized: false,
             admin_password_value: String::from(""),

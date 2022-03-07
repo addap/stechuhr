@@ -34,8 +34,8 @@ pub fn update_staff_member(staff_member: &StaffMember, connection: &SqliteConnec
         .expect(&format!("Error updating staff {}", staff_member.name));
 }
 
-pub fn update_staff(staff_v: &Vec<StaffMember>, connection: &SqliteConnection) {
-    for staff_member in staff_v.iter() {
+pub fn update_staff(staff_v: &[StaffMember], connection: &SqliteConnection) {
+    for staff_member in staff_v {
         update_staff_member(staff_member, connection);
     }
 }

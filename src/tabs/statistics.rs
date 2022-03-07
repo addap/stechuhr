@@ -307,7 +307,7 @@ impl StatsTab {
                     .map(|staff_member| {
                         let mut event_sm = EventSM::new();
 
-                        for event in events.iter() {
+                        for event in &events {
                             event_sm.process(staff_member.uuid(), event);
                         }
 
@@ -337,7 +337,7 @@ impl StatsTab {
                     .collect();
 
                 let mut wtr = csv::Writer::from_path("test.csv").unwrap();
-                for hours in staff_hours.iter() {
+                for hours in &staff_hours {
                     wtr.serialize(hours).unwrap();
                 }
                 wtr.flush().unwrap();
