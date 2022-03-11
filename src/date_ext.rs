@@ -20,7 +20,7 @@ impl NaiveDateExt for NaiveDate {
             1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
             2 => 28,
             4 | 6 | 9 | 11 => 30,
-            _ => panic!("Month out of range"),
+            _ => unreachable!("Month out of range"),
         };
         self.with_day(last_day).unwrap()
     }

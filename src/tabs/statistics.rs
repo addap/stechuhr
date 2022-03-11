@@ -336,7 +336,13 @@ impl StatsTab {
                     })
                     .collect();
 
-                let mut wtr = csv::Writer::from_path("test.csv").unwrap();
+                let filename = format!(
+                    "{}.csv",
+                    self.date
+                        .format_localized("%B-%Y", Locale::de_DE)
+                        .to_string()
+                );
+                let mut wtr = csv::Writer::from_path(filename).unwrap();
                 for hours in &staff_hours {
                     wtr.serialize(hours).unwrap();
                 }
