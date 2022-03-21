@@ -21,3 +21,5 @@ serde-lexpr = "0.1.0"
 csv = "1"
 pbkdf2 = { version = "0.10.1", features = ["std"] }
 rand_core = { version = "0.6", features = ["std"] }
+log = "0.4.14"
+env_logger = "0.9.0"

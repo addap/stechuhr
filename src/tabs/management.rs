@@ -1,8 +1,12 @@
 // add users and change user names/pin/cardid
 
+use std::mem;
+
 use diesel::SqliteConnection;
-use iced::{button, text_input, Button, Column, Element, Length, Row, Text, TextInput};
-use iced_aw::TabLabel;
+use iced::{
+    button, text_input, Button, Column, Element, HorizontalAlignment, Length, Row, Text, TextInput,
+};
+use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
 
 use crate::{Message, SharedData, Tab};
@@ -112,6 +116,8 @@ impl<'a> MemberRow<'a> {
 }
 
 pub struct ManagementTab {
+    whoami_modal_state: modal::State<WhoamiModalState>,
+    whoami_button_state: button::State,
     /* wether we are logged in */
     authorized: bool,
     admin_password_value: String,
@@ -128,8 +134,18 @@ pub struct ManagementTab {
     new_submit_state: button::State,
 }
 
+#[derive(Debug, Default)]
+struct WhoamiModalState {
+    input_value: String,
+    input_state: text_input::State,
+}
+
 #[derive(Debug, Clone)]
 pub enum ManagementMessage {
+    Whoami,
+    ChangeWhoami(String),
+    SubmitWhoami,
+    CancelWhoami,
     /* Pre Login */
     ChangePasswordInput(String),
     SubmitPassword,
@@ -153,6 +169,8 @@ impl ManagementTab {
 
     pub fn new(staff: &[StaffMember]) -> Self {
         ManagementTab {
+            whoami_modal_state: modal::State::default(),
+            whoami_button_state: button::State::default(),
             authorized: false,
             admin_password_value: String::from(""),
             admin_password_state: text_input::State::default(),
@@ -219,6 +237,28 @@ impl ManagementTab {
                 self.new_name_value.clear();
                 self.new_pin_value.clear();
                 self.new_cardid_value.clear();
+            }
+            ManagementMessage::Whoami => {
+                self.whoami_modal_state.show(true);
+            }
+            ManagementMessage::CancelWhoami => {
+                self.whoami_modal_state.inner_mut().input_value.clear();
+                self.whoami_modal_state.show(false);
+            }
+            ManagementMessage::ChangeWhoami(cardid) => {
+                self.whoami_modal_state.inner_mut().input_value = cardid;
+            }
+            ManagementMessage::SubmitWhoami => {
+                let cardid = mem::replace(
+                    &mut self.whoami_modal_state.inner_mut().input_value,
+                    String::from(""),
+                );
+                self.whoami_modal_state.show(false);
+
+                let name =
+                    StaffMember::get_by_card_id(&shared.staff, &cardid).map(|sm| sm.name.clone());
+
+                shared.log_event(WorkEvent::Whoami(cardid, name));
             }
         }
     }
@@ -304,26 +344,52 @@ impl ManagementTab {
     }
 
     fn password_view(&mut self) -> Element<'_, ManagementMessage> {
-        let pw_input = Column::new().push(
-            TextInput::new(
-                &mut self.admin_password_state,
-                "Admin Passwort",
-                &self.admin_password_value,
-                ManagementMessage::ChangePasswordInput,
+        let content = Column::new()
+            .push(
+                TextInput::new(
+                    &mut self.admin_password_state,
+                    "Administrator Passwort",
+                    &self.admin_password_value,
+                    ManagementMessage::ChangePasswordInput,
+                )
+                .password()
+                .on_submit(ManagementMessage::SubmitPassword),
             )
-            .password()
-            .on_submit(ManagementMessage::SubmitPassword),
-        );
+            .push(
+                Button::new(
+                    &mut self.whoami_button_state,
+                    Text::new("Wem gehört dieser Dongle?")
+                        .horizontal_alignment(HorizontalAlignment::Center),
+                )
+                .on_press(ManagementMessage::Whoami),
+            );
 
-        pw_input.into()
+        let whoami_modal = Modal::new(&mut self.whoami_modal_state, content, move |state| {
+            Card::new(Text::new("Dongle Abfrage"), {
+                state.input_state.focus();
+                TextInput::new(
+                    &mut state.input_state,
+                    "",
+                    &state.input_value,
+                    ManagementMessage::ChangeWhoami,
+                )
+                .on_submit(ManagementMessage::SubmitWhoami)
+            })
+            .max_width(300)
+            .width(Length::Fill)
+            .on_close(ManagementMessage::CancelWhoami)
+            .into()
+        })
+        .backdrop(ManagementMessage::CancelWhoami)
+        .on_esc(ManagementMessage::CancelWhoami);
+
+        whoami_modal.into()
     }
 }
 
 impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
-    // type Message = Message;
-
     fn title(&self) -> String {
-        String::from("User Management")
+        String::from("Benutzerverwaltung")
     }
 
     fn tab_label(&self) -> TabLabel {

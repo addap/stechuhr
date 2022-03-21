@@ -1,6 +1,6 @@
 use crate::schema::{events, passwords, staff};
-use chrono;
-use chrono::NaiveDateTime;
+use chrono::{self, NaiveDate};
+use chrono::{Local, NaiveDateTime};
 use diesel::deserialize::{self, FromSql, Queryable};
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::*;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_lexpr;
 use std::{fmt, io};
 
-#[derive(Debug, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize)]
 #[sql_type = "Bool"]
 pub enum WorkStatus {
     Away,
@@ -44,12 +44,15 @@ impl fmt::Display for WorkStatus {
     }
 }
 
-#[derive(Debug, Clone, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, AsExpression, FromSqlRow, Serialize, Deserialize)]
 #[sql_type = "Text"]
 pub enum WorkEvent {
     StatusChange(i32, String, WorkStatus),
     EventStart,
     EventOver,
+    Whoami(String, Option<String>),
+    Info(String),
+    Warning(String),
 }
 
 impl fmt::Display for WorkEvent {
@@ -60,21 +63,47 @@ impl fmt::Display for WorkEvent {
             }
             WorkEvent::EventStart => String::from("Event gestartet"),
             WorkEvent::EventOver => String::from("Event gestoppt"),
+            WorkEvent::Whoami(cardid, name) => {
+                if let Some(name) = name {
+                    format!("Der Dongle mit ID \"{}\" gehört {}", cardid, name)
+                } else {
+                    format!("Der Dongle mit ID \"{}\" gehört niemandem", cardid)
+                }
+            }
+            // TODO can we add color with the formatter?
+            WorkEvent::Info(msg) => msg.clone(),
+            WorkEvent::Warning(msg) => msg.clone(),
         };
 
         fmt::Display::fmt(&str, f)
     }
 }
 
+#[derive(Debug, Clone, AsExpression)]
+pub struct WorkEventT {
+    id: i32,
+    pub created_at: NaiveDateTime,
+    pub event: WorkEvent,
+}
+
 #[derive(Debug, Clone, Insertable, AsExpression)]
 #[table_name = "events"]
-pub struct WorkEventT {
-    pub created_at: NaiveDateTime,
+pub struct NewWorkEventT {
+    created_at: NaiveDateTime,
     #[column_name = "event_json"]
     pub event: WorkEvent,
 }
 
-// a.d. TODO derive aschangeset fails if status is my custom WorkStatus boolean. How to fix?
+impl NewWorkEventT {
+    pub fn new(event: WorkEvent) -> Self {
+        NewWorkEventT {
+            created_at: Local::now().naive_local(),
+            event,
+        }
+    }
+}
+
+// a.d. DONE derive aschangeset fails if status is my custom WorkStatus boolean. How to fix?
 // using sql_type annotation as described below does not work because it is not found
 // https://github.com/diesel-rs/diesel/blob/1.4.x/guide_drafts/trait_derives.md#aschangeset
 // https://noyez.gitlab.io/post/2018-08-05-a-small-custom-bool-type-in-diesel/
@@ -101,6 +130,15 @@ pub struct NewStaffMember {
 impl StaffMember {
     pub fn uuid(&self) -> i32 {
         self.uuid
+    }
+
+    pub fn get_by_card_id<'a>(staff: &'a [Self], cardid: &str) -> Option<&'a Self> {
+        for staff_member in staff {
+            if staff_member.cardid == cardid {
+                return Some(staff_member);
+            }
+        }
+        None
     }
 
     // DONE can I use lifetimes to return a reference to the staffmember?
@@ -214,6 +252,7 @@ where
 
     fn build(row: Self::Row) -> Self {
         WorkEventT {
+            id: row.0,
             created_at: row.1,
             event: row.2,
         }

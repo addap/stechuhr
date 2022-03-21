@@ -91,6 +91,22 @@ impl TimetrackTab {
                 self.break_input_value.clear();
             }
             TimetrackMessage::EndEvent => {
+                let sign_off_events: Vec<_> = shared
+                    .staff
+                    .iter_mut()
+                    .filter(|staff_member| staff_member.status == WorkStatus::Working)
+                    .map(|staff_member| {
+                        let uuid = staff_member.uuid();
+                        let name = staff_member.name.clone();
+                        let new_status = WorkStatus::Away;
+                        staff_member.status = new_status;
+                        WorkEvent::StatusChange(uuid, name, new_status)
+                    })
+                    .collect();
+
+                for event in sign_off_events.into_iter() {
+                    shared.log_event(event);
+                }
                 shared.log_event(WorkEvent::EventOver);
             }
         }
@@ -98,11 +114,8 @@ impl TimetrackTab {
 }
 
 impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
-    // TODO what is this for?
-    // type Message = Message;
-
     fn title(&self) -> String {
-        String::from("Timetrack")
+        String::from("Stechuhr")
     }
 
     fn tab_label(&self) -> TabLabel {
@@ -143,7 +156,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
                 .push(
                     TextInput::new(
                         &mut self.break_input_state,
-                        "Deine PIN/Dongle swipen",
+                        "PIN eingeben/Dongle swipen",
                         &self.break_input_value,
                         TimetrackMessage::ChangeBreakInput,
                     )

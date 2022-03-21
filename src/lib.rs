@@ -6,15 +6,11 @@ pub mod schema;
 extern crate diesel;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use dotenv::dotenv;
-use models::{NewStaffMember, PasswordHash, StaffMember, WorkEventT};
+use models::{NewStaffMember, NewWorkEventT, PasswordHash, StaffMember, WorkEventT};
 use pbkdf2::{password_hash::PasswordVerifier, Pbkdf2};
-use std::env;
+use std::{env, error, fmt};
 
 pub fn establish_connection() -> SqliteConnection {
-    // TODO what does this accomplish? any side-effects?
-    dotenv().ok();
-
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     SqliteConnection::establish(&database_url)
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
@@ -50,7 +46,7 @@ pub fn insert_staff(staff_member: NewStaffMember, connection: &SqliteConnection)
         .expect(&format!("Error inserting new staff {}", staff_member.name));
 
     let mut newly_inserted = staff
-        .filter(pin.eq(staff_member.pin))
+        .order_by(id.desc())
         .limit(1)
         .load::<StaffMember>(connection)
         .expect(&format!(
@@ -63,13 +59,23 @@ pub fn insert_staff(staff_member: NewStaffMember, connection: &SqliteConnection)
     newly_inserted
 }
 
-pub fn save_event(new_event: &WorkEventT, connection: &SqliteConnection) {
+pub fn insert_event(new_event: &NewWorkEventT, connection: &SqliteConnection) -> WorkEventT {
     use schema::events::dsl::*;
 
     diesel::insert_into(events)
         .values(new_event)
         .execute(connection)
         .expect("Error inserting new event");
+
+    let mut newly_inserted = events
+        .order_by(id.desc())
+        .limit(1)
+        .load::<WorkEventT>(connection)
+        .expect("Error loading newly inserted event");
+
+    let newly_inserted = newly_inserted.remove(0);
+
+    newly_inserted
 }
 
 pub fn load_events(

@@ -3,19 +3,23 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
+mod tabs;
+
+use std::{error, fmt};
+
 use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
+use dotenv::dotenv;
 use iced::{
-    executor, scrollable, Align, Application, Column, Command, Container, Element, Length,
-    Scrollable, Settings, Subscription, Text,
+    button, executor, scrollable, Align, Application, Button, Column, Command, Container, Element,
+    HorizontalAlignment, Length, Scrollable, Settings, Subscription, Text,
 };
-use iced_aw::{TabLabel, Tabs};
+use iced_aw::{modal, Card, Modal, TabLabel, Tabs};
 use iced_native::{event::Status, keyboard, window, Event};
 use stechuhr::models::*;
 
-mod tabs;
 use tabs::management::{ManagementMessage, ManagementTab};
-use tabs::statistics::{StatsMessage, StatsTab};
+use tabs::statistics::{StatisticsError, StatsMessage, StatsTab};
 use tabs::timetrack::{TimetrackMessage, TimetrackTab};
 
 const HEADER_SIZE: u16 = 32;
@@ -23,6 +27,11 @@ const TAB_PADDING: u16 = 16;
 const LOG_LENGTH: usize = 6;
 
 pub fn main() -> iced::Result {
+    // DONE what does this accomplish? any side-effects?
+    // the side effect is populating the env module used below. The ok() is to turn a Result into an Option so that the "unused Result" warning is not triggered.
+    dotenv().ok();
+
+    env_logger::init();
     let connection = stechuhr::establish_connection();
 
     Stechuhr::run(Settings {
@@ -37,17 +46,26 @@ pub struct SharedData {
     staff: Vec<StaffMember>,
     events: Vec<WorkEventT>,
     connection: SqliteConnection,
+    prompt_modal_state: modal::State<PromptModalState>,
 }
 
 impl SharedData {
     fn log_event(&mut self, event: WorkEvent) {
-        let eventt = WorkEventT {
-            created_at: Local::now().naive_local(),
-            event: event,
-        };
-        stechuhr::save_event(&eventt, &self.connection);
+        let new_eventt = NewWorkEventT::new(event);
+        let eventt = stechuhr::insert_event(&new_eventt, &self.connection);
         self.events.push(eventt);
     }
+
+    fn prompt_info(&mut self, msg: String) {
+        self.prompt_modal_state.show(true);
+        self.prompt_modal_state.inner_mut().msg = msg;
+    }
+}
+
+#[derive(Debug, PartialEq, Default)]
+struct PromptModalState {
+    msg: String,
+    ok_button_state: button::State,
 }
 
 struct Stechuhr {
@@ -63,6 +81,7 @@ struct Stechuhr {
 enum Message {
     Tick(DateTime<Local>),
     ExitApplication,
+    ExitPrompt,
     TabSelected(usize),
     Timetrack(TimetrackMessage),
     Management(ManagementMessage),
@@ -89,6 +108,7 @@ impl Application for Stechuhr {
                     staff,
                     events: Vec::new(),
                     connection: connection,
+                    prompt_modal_state: modal::State::default(),
                 },
                 active_tab: 0,
                 should_exit: false,
@@ -112,9 +132,23 @@ impl Application for Stechuhr {
                 }
             }
             Message::ExitApplication => {
-                println!("exit");
-                stechuhr::update_staff(&self.shared.staff, &self.shared.connection);
-                self.should_exit = true;
+                if self
+                    .shared
+                    .staff
+                    .iter()
+                    .any(|staff_member| staff_member.status == WorkStatus::Working)
+                {
+                    self.shared.prompt_info(String::from(
+                        "Es sind noch Personen am Arbeiten. Bitte zuerst das Event beenden.",
+                    ));
+                } else {
+                    stechuhr::update_staff(&self.shared.staff, &self.shared.connection);
+                    self.should_exit = true;
+                }
+            }
+            Message::ExitPrompt => {
+                self.shared.prompt_modal_state.show(false);
+                self.shared.prompt_modal_state.inner_mut().msg.clear();
             }
             Message::TabSelected(new_tab) => {
                 self.management.deauth();
@@ -184,12 +218,29 @@ impl Application for Stechuhr {
             ],
             Message::TabSelected,
         )
-        .tab_bar_position(iced_aw::TabBarPosition::Top); // .height(Length::Fill),
+        .tab_bar_position(iced_aw::TabBarPosition::Top)
+        .text_size(HEADER_SIZE);
 
-        Column::new()
+        let content = Column::new()
             .push(Container::new(tabs).height(Length::FillPortion(80)))
-            .push(logview.height(Length::FillPortion(20)))
-            .into()
+            .push(logview.height(Length::FillPortion(20)));
+
+        let modal = Modal::new(&mut self.shared.prompt_modal_state, content, move |state| {
+            Card::new(Text::new("Information"), Text::new(&state.msg))
+                .foot(
+                    Button::new(&mut state.ok_button_state, Text::new("Ok"))
+                        .width(Length::Shrink)
+                        .on_press(Message::ExitPrompt),
+                )
+                .max_width(300)
+                .width(Length::Fill)
+                .on_close(Message::ExitPrompt)
+                .into()
+        })
+        .backdrop(Message::ExitPrompt)
+        .on_esc(Message::ExitPrompt);
+
+        modal.into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -217,15 +268,11 @@ impl Application for Stechuhr {
 }
 
 trait Tab<'a: 'b, 'b> {
-    // type Message;
-
     fn title(&self) -> String;
 
     fn tab_label(&self) -> TabLabel;
 
     fn view(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
-        // An (TODO scrollable) event log
-
         let column = Column::new()
             .spacing(20)
             .push(Text::new(self.title()).size(HEADER_SIZE))
@@ -233,7 +280,7 @@ trait Tab<'a: 'b, 'b> {
 
         Container::new(column)
             .width(Length::Fill)
-            .height(Length::FillPortion(80))
+            .height(Length::Fill)
             .align_x(Align::Center)
             .align_y(Align::Start)
             .padding(TAB_PADDING)
@@ -241,4 +288,40 @@ trait Tab<'a: 'b, 'b> {
     }
 
     fn content(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message>;
+
+    /// Handle a result of some computation by showing the error message in a prompt.
+    /// TODO also log to syslog
+    fn handle_result(
+        &'a mut self,
+        shared: &'b mut SharedData,
+        result: Result<(), StechuhrError>,
+    ) -> () {
+        if let Err(e) = result {
+            let e = e.to_string();
+            log::error!("{}", e);
+            shared.prompt_info(e);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum StechuhrError {
+    Statistics(StatisticsError),
+}
+
+impl From<StatisticsError> for StechuhrError {
+    fn from(e: StatisticsError) -> Self {
+        Self::Statistics(e)
+    }
+}
+
+impl error::Error for StechuhrError {}
+
+impl fmt::Display for StechuhrError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description: String = match self {
+            StechuhrError::Statistics(e) => return e.fmt(f),
+        };
+        f.write_str(&description)
+    }
 }

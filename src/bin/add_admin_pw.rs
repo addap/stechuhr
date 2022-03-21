@@ -1,3 +1,4 @@
+use dotenv::dotenv;
 use pbkdf2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Pbkdf2,
@@ -15,6 +16,9 @@ fn get_input_pw() -> Result<String, Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    dotenv().ok();
+    env_logger::init();
+
     let password = get_input_pw()?;
     let salt = SaltString::generate(&mut OsRng);
 
