@@ -2,7 +2,9 @@ use std::cmp::min;
 
 use chrono::{Duration, NaiveDateTime, Timelike};
 
-type Secs = u32;
+use super::StatisticsError;
+
+type Secs = i64;
 const SECS_PER_HOUR: Secs = 60 * 60;
 
 enum DurationSMLabel {
@@ -93,9 +95,9 @@ impl DurationSM {
     fn to_work_duration(&self) -> WorkDuration {
         let [s1, s2, s3] = self.buckets;
         WorkDuration([
-            Duration::seconds(s1 as i64),
-            Duration::seconds(s2 as i64),
-            Duration::seconds(s3 as i64),
+            Duration::seconds(s1),
+            Duration::seconds(s2),
+            Duration::seconds(s3),
         ])
     }
 }
@@ -108,15 +110,20 @@ impl WorkDuration {
         WorkDuration([Duration::zero(), Duration::zero(), Duration::zero()])
     }
 
-    pub fn checked_add(&self, rhs: &Self) -> Option<Self> {
+    pub fn checked_add(&self, rhs: &Self) -> Result<Self, StatisticsError> {
         let WorkDuration([t1, t2, t3]) = self;
         let WorkDuration([s1, s2, s3]) = rhs;
 
-        Some(WorkDuration([
-            s1.checked_add(t1).unwrap(),
-            s2.checked_add(t2).unwrap(),
-            s3.checked_add(t3).unwrap(),
-        ]))
+        let r1 = s1
+            .checked_add(t1)
+            .ok_or(StatisticsError::DurationError(*s1, *t1))?;
+        let r2 = s2
+            .checked_add(t2)
+            .ok_or(StatisticsError::DurationError(*s2, *t2))?;
+        let r3 = s3
+            .checked_add(t3)
+            .ok_or(StatisticsError::DurationError(*s3, *t3))?;
+        Ok(WorkDuration([r1, r2, r3]))
     }
 
     pub fn from_start_end_time(start_time: NaiveDateTime, end_time: NaiveDateTime) -> Self {
@@ -134,9 +141,8 @@ impl WorkDuration {
         //   subtract from total
         assert!(start_time < end_time);
 
-        let current_seconds = start_time.num_seconds_from_midnight();
-        let mut seconds_remaining =
-            u32::try_from(end_time.signed_duration_since(start_time).num_seconds()).unwrap();
+        let current_seconds = start_time.num_seconds_from_midnight() as i64;
+        let mut seconds_remaining = end_time.signed_duration_since(start_time).num_seconds();
         let mut sm = DurationSM::new(current_seconds);
 
         while seconds_remaining > 0 {

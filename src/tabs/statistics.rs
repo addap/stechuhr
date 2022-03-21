@@ -14,7 +14,7 @@ mod time_eval;
 
 use std::{error, fmt};
 
-use chrono::{Date, Local, Locale, NaiveDate, NaiveTime};
+use chrono::{Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime};
 use iced::{button, Button, Column, Container, Element, Length, Row, Space, Text};
 use iced_aw::{
     date_picker::{self, DatePicker},
@@ -87,7 +87,7 @@ impl StatsTab {
                 let mut event_sm = EventSM::new(staff_member);
 
                 for event in &events {
-                    event_sm.process(event);
+                    event_sm.process(event)?;
                 }
 
                 event_sm.finish()
@@ -114,39 +114,18 @@ impl StatsTab {
                 .format_localized("%B-%Y", Locale::de_DE)
                 .to_string()
         );
-        let mut wtr = csv::Writer::from_path(filename).unwrap();
+        let mut wtr = csv::Writer::from_path(filename)?;
         for hours in &staff_hours {
-            wtr.serialize(hours).unwrap();
+            wtr.serialize(hours)?;
         }
-        wtr.flush().unwrap();
+        wtr.flush()?;
         Ok(())
-    }
-
-    pub fn update(&mut self, shared: &mut SharedData, message: StatsMessage) {
-        match message {
-            StatsMessage::ChooseDate => {
-                self.month_picker.reset();
-                self.month_picker.show(true);
-            }
-            StatsMessage::CancelDate => {
-                self.month_picker.show(false);
-            }
-            StatsMessage::SubmitDate(date) => {
-                let naive_date = NaiveDate::from(date);
-                // TODO better way to get the current offset? I should be able to just specify the "Europe/Berlin" Timezone and get it from there
-                let offset = *Local::now().offset();
-                self.date = Date::from_utc(naive_date, offset);
-                self.month_picker.show(false);
-            }
-            StatsMessage::Generate => {
-                let csv = self.generate_csv(shared);
-                self.handle_result(shared, csv);
-            }
-        }
     }
 }
 
 impl<'a: 'b, 'b> Tab<'a, 'b> for StatsTab {
+    type Message = StatsMessage;
+
     fn title(&self) -> String {
         String::from("Auswertung")
     }
@@ -189,11 +168,42 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for StatsTab {
 
         content.map(Message::Statistics)
     }
+
+    fn update_result(
+        &mut self,
+        shared: &mut SharedData,
+        message: StatsMessage,
+    ) -> Result<(), StechuhrError> {
+        match message {
+            StatsMessage::ChooseDate => {
+                self.month_picker.reset();
+                self.month_picker.show(true);
+                Ok(())
+            }
+            StatsMessage::CancelDate => {
+                self.month_picker.show(false);
+                Ok(())
+            }
+            StatsMessage::SubmitDate(date) => {
+                let naive_date = NaiveDate::from(date);
+                // TODO better way to get the current offset? I should be able to just specify the "Europe/Berlin" Timezone and get it from there
+                let offset = *Local::now().offset();
+                self.date = Date::from_utc(naive_date, offset);
+                self.month_picker.show(false);
+                Ok(())
+            }
+            StatsMessage::Generate => self.generate_csv(shared),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum StatisticsError {
+    AlreadyWorking(NaiveDateTime, String),
+    AlreadyAway(NaiveDateTime, String),
+    OverWhileWorking(NaiveDateTime, String),
     StaffStillWorking(String),
+    DurationError(Duration, Duration),
 }
 
 impl error::Error for StatisticsError {}
@@ -201,7 +211,24 @@ impl error::Error for StatisticsError {}
 impl fmt::Display for StatisticsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match self {
-            StatisticsError::StaffStillWorking(name) => format!("Staff {} is still working.", name),
+            StatisticsError::AlreadyWorking(date, name) => format!(
+                "Encountered StatusChange to Working at {} while staff {} was already working",
+                date, name
+            ),
+            StatisticsError::AlreadyAway(date, name) => format!(
+                "Encountered StatusChange to Away at {} while staff {} was already away",
+                date, name
+            ),
+            StatisticsError::OverWhileWorking(date, name) => format!(
+                "Encountered EventOver at {} while staff {} was still working",
+                date, name
+            ),
+            StatisticsError::StaffStillWorking(name) => {
+                format!("Staff {} is still working at end ov evaluation", name)
+            }
+            StatisticsError::DurationError(d1, d2) => {
+                format!("Error adding durations {} and {}", d1, d2)
+            }
         };
         f.write_str(&description)
     }

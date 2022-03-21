@@ -6,7 +6,7 @@ use iced::{
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
 
-use crate::{Message, SharedData, Tab};
+use crate::{Message, SharedData, StechuhrError, Tab};
 
 const PIN_LENGTH: usize = 4;
 const CARDID_LENGTH: usize = 10;
@@ -60,60 +60,11 @@ impl TimetrackTab {
             self.break_input_value.clear();
         }
     }
-
-    pub fn update(&mut self, shared: &mut SharedData, message: TimetrackMessage) {
-        match message {
-            TimetrackMessage::ChangeBreakInput(value) => {
-                self.break_input_value = value;
-            }
-            TimetrackMessage::SubmitBreakInput => {
-                let input = self.break_input_value.trim();
-
-                if input.len() == PIN_LENGTH || input.len() == CARDID_LENGTH {
-                    if let Some(staff_member) =
-                        StaffMember::get_by_pin_or_card_id(&shared.staff, input)
-                    {
-                        self.break_modal_state.show(true);
-                        self.break_input_uuid = Some(staff_member.uuid());
-                    } else {
-                        println!("No matching staff member found for input {}.", input);
-                    }
-                } else {
-                    println!("Malformed input {}.", input);
-                }
-            }
-            TimetrackMessage::ConfirmSubmitBreakInput => {
-                self.handle_confirm_submit_break_input(shared);
-            }
-            TimetrackMessage::CancelSubmitBreakInput => {
-                self.break_modal_state.show(false);
-                self.break_input_uuid = None;
-                self.break_input_value.clear();
-            }
-            TimetrackMessage::EndEvent => {
-                let sign_off_events: Vec<_> = shared
-                    .staff
-                    .iter_mut()
-                    .filter(|staff_member| staff_member.status == WorkStatus::Working)
-                    .map(|staff_member| {
-                        let uuid = staff_member.uuid();
-                        let name = staff_member.name.clone();
-                        let new_status = WorkStatus::Away;
-                        staff_member.status = new_status;
-                        WorkEvent::StatusChange(uuid, name, new_status)
-                    })
-                    .collect();
-
-                for event in sign_off_events.into_iter() {
-                    shared.log_event(event);
-                }
-                shared.log_event(WorkEvent::EventOver);
-            }
-        }
-    }
 }
 
 impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
+    type Message = TimetrackMessage;
+
     fn title(&self) -> String {
         String::from("Stechuhr")
     }
@@ -222,5 +173,61 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
         let content: Element<'_, TimetrackMessage> = Container::new(modal).into();
 
         content.map(Message::Timetrack)
+    }
+
+    fn update_result(
+        &mut self,
+        shared: &mut SharedData,
+        message: TimetrackMessage,
+    ) -> Result<(), StechuhrError> {
+        match message {
+            TimetrackMessage::ChangeBreakInput(value) => {
+                self.break_input_value = value;
+            }
+            TimetrackMessage::SubmitBreakInput => {
+                let input = self.break_input_value.trim();
+
+                if input.len() == PIN_LENGTH || input.len() == CARDID_LENGTH {
+                    if let Some(staff_member) =
+                        StaffMember::get_by_pin_or_card_id(&shared.staff, input)
+                    {
+                        self.break_modal_state.show(true);
+                        self.break_input_uuid = Some(staff_member.uuid());
+                    } else {
+                        println!("No matching staff member found for input {}.", input);
+                    }
+                } else {
+                    println!("Malformed input {}.", input);
+                }
+            }
+            TimetrackMessage::ConfirmSubmitBreakInput => {
+                self.handle_confirm_submit_break_input(shared);
+            }
+            TimetrackMessage::CancelSubmitBreakInput => {
+                self.break_modal_state.show(false);
+                self.break_input_uuid = None;
+                self.break_input_value.clear();
+            }
+            TimetrackMessage::EndEvent => {
+                let sign_off_events: Vec<_> = shared
+                    .staff
+                    .iter_mut()
+                    .filter(|staff_member| staff_member.status == WorkStatus::Working)
+                    .map(|staff_member| {
+                        let uuid = staff_member.uuid();
+                        let name = staff_member.name.clone();
+                        let new_status = WorkStatus::Away;
+                        staff_member.status = new_status;
+                        WorkEvent::StatusChange(uuid, name, new_status)
+                    })
+                    .collect();
+
+                for event in sign_off_events.into_iter() {
+                    shared.log_event(event);
+                }
+                shared.log_event(WorkEvent::EventOver);
+            }
+        }
+        Ok(())
     }
 }

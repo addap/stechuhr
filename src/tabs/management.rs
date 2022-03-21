@@ -1,6 +1,6 @@
 // add users and change user names/pin/cardid
 
-use std::mem;
+use std::{error, fmt, mem};
 
 use diesel::SqliteConnection;
 use iced::{
@@ -9,7 +9,7 @@ use iced::{
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
 
-use crate::{Message, SharedData, Tab};
+use crate::{Message, SharedData, StechuhrError, Tab};
 
 struct StaffMemberState {
     pin_state: text_input::State,
@@ -68,25 +68,44 @@ impl<'a> MemberRow<'a> {
         MemberRow { staff, states }
     }
 
-    fn change_pin_state(&mut self, idx: usize, new_pin: String) {
-        let state = self.states.get_mut(idx).unwrap();
+    fn change_pin_state(&mut self, idx: usize, new_pin: String) -> Result<(), ManagementError> {
+        let state = self
+            .states
+            .get_mut(idx)
+            .ok_or(ManagementError::IndexError(idx))?;
         state.cardid_value = new_pin;
+        Ok(())
     }
 
-    fn change_cardid_state(&mut self, idx: usize, new_cardid: String) {
-        let state = self.states.get_mut(idx).unwrap();
+    fn change_cardid_state(
+        &mut self,
+        idx: usize,
+        new_cardid: String,
+    ) -> Result<(), ManagementError> {
+        let state = self
+            .states
+            .get_mut(idx)
+            .ok_or(ManagementError::IndexError(idx))?;
         state.cardid_value = new_cardid;
+        Ok(())
     }
 
-    fn submit(&mut self, idx: usize, connection: &SqliteConnection) {
-        let state = self.states.get_mut(idx).unwrap();
-        let staff_member = self.staff.get_mut(idx).unwrap();
+    fn submit(&mut self, idx: usize, connection: &SqliteConnection) -> Result<(), ManagementError> {
+        let state = self
+            .states
+            .get_mut(idx)
+            .ok_or(ManagementError::IndexError(idx))?;
+        let staff_member = self
+            .staff
+            .get_mut(idx)
+            .ok_or(ManagementError::IndexError(idx))?;
 
         staff_member.pin.clone_from(&state.pin_value);
         staff_member.cardid.clone_from(&state.cardid_value);
 
         // save in db
         stechuhr::update_staff_member(staff_member, connection);
+        Ok(())
     }
 
     fn submit_new_row(
@@ -183,83 +202,6 @@ impl ManagementTab {
             new_cardid_state: text_input::State::default(),
             new_cardid_value: String::from(""),
             new_submit_state: button::State::default(),
-        }
-    }
-
-    pub fn update(&mut self, shared: &mut SharedData, message: ManagementMessage) {
-        match message {
-            ManagementMessage::ChangePasswordInput(password) => {
-                self.admin_password_value = password;
-            }
-            ManagementMessage::SubmitPassword => {
-                if stechuhr::verify_password(self.admin_password_value.trim(), &shared.connection) {
-                    self.auth();
-                } else {
-                    // TODO mark pw field as red
-                }
-                self.admin_password_value.clear();
-            }
-            ManagementMessage::ChangePIN(idx, new_pin) => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states)
-                    .change_pin_state(idx, new_pin)
-            }
-            ManagementMessage::ChangeCardID(idx, new_cardid) => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states)
-                    .change_cardid_state(idx, new_cardid)
-            }
-            ManagementMessage::SubmitRow(idx) => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states)
-                    .submit(idx, &shared.connection)
-            }
-            // ManagementMessage::DeleteRow(idx) => {
-            //     MemberRow::from(&mut shared.staff, &mut self.staff_states)
-            //         .delete(idx)
-            // }
-            ManagementMessage::ChangeNewRow(name, pin, cardid) => {
-                if let Some(name) = name {
-                    self.new_name_value = name;
-                }
-                if let Some(pin) = pin {
-                    self.new_pin_value = pin;
-                }
-                if let Some(cardid) = cardid {
-                    self.new_cardid_value = cardid;
-                }
-            }
-            ManagementMessage::SubmitNewRow => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states).submit_new_row(
-                    self.new_name_value.clone(),
-                    self.new_pin_value.clone(),
-                    self.new_cardid_value.clone(),
-                    &shared.connection,
-                );
-
-                self.new_name_value.clear();
-                self.new_pin_value.clear();
-                self.new_cardid_value.clear();
-            }
-            ManagementMessage::Whoami => {
-                self.whoami_modal_state.show(true);
-            }
-            ManagementMessage::CancelWhoami => {
-                self.whoami_modal_state.inner_mut().input_value.clear();
-                self.whoami_modal_state.show(false);
-            }
-            ManagementMessage::ChangeWhoami(cardid) => {
-                self.whoami_modal_state.inner_mut().input_value = cardid;
-            }
-            ManagementMessage::SubmitWhoami => {
-                let cardid = mem::replace(
-                    &mut self.whoami_modal_state.inner_mut().input_value,
-                    String::from(""),
-                );
-                self.whoami_modal_state.show(false);
-
-                let name =
-                    StaffMember::get_by_card_id(&shared.staff, &cardid).map(|sm| sm.name.clone());
-
-                shared.log_event(WorkEvent::Whoami(cardid, name));
-            }
         }
     }
 }
@@ -388,6 +330,8 @@ impl ManagementTab {
 }
 
 impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
+    type Message = ManagementMessage;
+
     fn title(&self) -> String {
         String::from("Benutzerverwaltung")
     }
@@ -404,5 +348,105 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
         };
 
         content.map(Message::Management)
+    }
+
+    fn update_result(
+        &'a mut self,
+        shared: &'b mut SharedData,
+        message: ManagementMessage,
+    ) -> Result<(), StechuhrError> {
+        match message {
+            ManagementMessage::ChangePasswordInput(password) => {
+                self.admin_password_value = password;
+            }
+            ManagementMessage::SubmitPassword => {
+                if stechuhr::verify_password(self.admin_password_value.trim(), &shared.connection) {
+                    self.auth();
+                } else {
+                    // TODO mark pw field as red
+                }
+                self.admin_password_value.clear();
+            }
+            ManagementMessage::ChangePIN(idx, new_pin) => {
+                MemberRow::from(&mut shared.staff, &mut self.staff_states)
+                    .change_pin_state(idx, new_pin)?;
+            }
+            ManagementMessage::ChangeCardID(idx, new_cardid) => {
+                MemberRow::from(&mut shared.staff, &mut self.staff_states)
+                    .change_cardid_state(idx, new_cardid)?;
+            }
+            ManagementMessage::SubmitRow(idx) => {
+                MemberRow::from(&mut shared.staff, &mut self.staff_states)
+                    .submit(idx, &shared.connection)?;
+            }
+            // ManagementMessage::DeleteRow(idx) => {
+            //     MemberRow::from(&mut shared.staff, &mut self.staff_states)
+            //         .delete(idx)
+            // }
+            ManagementMessage::ChangeNewRow(name, pin, cardid) => {
+                if let Some(name) = name {
+                    self.new_name_value = name;
+                }
+                if let Some(pin) = pin {
+                    self.new_pin_value = pin;
+                }
+                if let Some(cardid) = cardid {
+                    self.new_cardid_value = cardid;
+                }
+            }
+            ManagementMessage::SubmitNewRow => {
+                MemberRow::from(&mut shared.staff, &mut self.staff_states).submit_new_row(
+                    self.new_name_value.clone(),
+                    self.new_pin_value.clone(),
+                    self.new_cardid_value.clone(),
+                    &shared.connection,
+                );
+
+                self.new_name_value.clear();
+                self.new_pin_value.clear();
+                self.new_cardid_value.clear();
+            }
+            ManagementMessage::Whoami => {
+                self.whoami_modal_state.show(true);
+            }
+            ManagementMessage::CancelWhoami => {
+                self.whoami_modal_state.inner_mut().input_value.clear();
+                self.whoami_modal_state.show(false);
+            }
+            ManagementMessage::ChangeWhoami(cardid) => {
+                self.whoami_modal_state.inner_mut().input_value = cardid;
+            }
+            ManagementMessage::SubmitWhoami => {
+                let cardid = mem::replace(
+                    &mut self.whoami_modal_state.inner_mut().input_value,
+                    String::from(""),
+                );
+                self.whoami_modal_state.show(false);
+
+                let name =
+                    StaffMember::get_by_card_id(&shared.staff, &cardid).map(|sm| sm.name.clone());
+
+                shared.log_event(WorkEvent::Whoami(cardid, name));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum ManagementError {
+    IndexError(usize),
+}
+
+impl error::Error for ManagementError {}
+
+impl fmt::Display for ManagementError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = match self {
+            ManagementError::IndexError(idx) => {
+                format!("Index out of range: {}", idx)
+            }
+        };
+        f.write_str(&description)
     }
 }

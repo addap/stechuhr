@@ -8,12 +8,12 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use models::{NewStaffMember, NewWorkEventT, PasswordHash, StaffMember, WorkEventT};
 use pbkdf2::{password_hash::PasswordVerifier, Pbkdf2};
-use std::{env, error, fmt};
+use std::env;
 
 pub fn establish_connection() -> SqliteConnection {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     SqliteConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+        .expect(&format!("Error connecting to {}", database_url))
 }
 
 pub fn load_staff(connection: &SqliteConnection) -> Vec<StaffMember> {

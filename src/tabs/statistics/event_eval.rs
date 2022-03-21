@@ -1,5 +1,3 @@
-use crate::StechuhrError;
-
 use super::{time_eval::WorkDuration, StatisticsError};
 use chrono::NaiveDateTime;
 use stechuhr::models::{StaffMember, WorkEvent, WorkEventT, WorkStatus};
@@ -13,7 +11,6 @@ pub struct EventSM<'a> {
     staff_member: &'a StaffMember,
     duration: WorkDuration,
     label: EventSMLabel,
-    has_errors: bool,
 }
 
 impl<'a> EventSM<'a> {
@@ -22,57 +19,60 @@ impl<'a> EventSM<'a> {
             staff_member,
             duration: WorkDuration::zero(),
             label: EventSMLabel::Away,
-            has_errors: false,
         }
     }
 
-    fn log_error(&mut self, msg: String) {
-        log::error!("{}", msg);
-        self.has_errors = true;
-    }
-
-    fn add_time(&mut self, start_time: NaiveDateTime, end_time: NaiveDateTime) {
+    fn add_time(
+        &mut self,
+        start_time: NaiveDateTime,
+        end_time: NaiveDateTime,
+    ) -> Result<(), StatisticsError> {
         let additional_work_time = WorkDuration::from_start_end_time(start_time, end_time);
-        self.duration = self.duration.checked_add(&additional_work_time).unwrap();
+        let new_duration = self.duration.checked_add(&additional_work_time)?;
+        self.duration = new_duration;
+        Ok(())
     }
 
-    pub fn process(&mut self, event: &WorkEventT) {
+    pub fn process(&mut self, event: &WorkEventT) -> Result<(), StatisticsError> {
         match self.label {
             EventSMLabel::Away => match event.event {
                 WorkEvent::StatusChange(uuid, _, WorkStatus::Working)
                     if self.staff_member.uuid() == uuid =>
                 {
-                    self.label = EventSMLabel::Working(event.created_at)
+                    self.label = EventSMLabel::Working(event.created_at);
+                    Ok(())
                 }
                 WorkEvent::StatusChange(uuid, _, WorkStatus::Away)
                     if self.staff_member.uuid() == uuid =>
                 {
-                    self.log_error(format!("Encountered StatusChange to Away at {} while staff {} was already not working.", event.created_at, self.staff_member.uuid()));
+                    Err(StatisticsError::AlreadyAway(
+                        event.created_at,
+                        self.staff_member.name.clone(),
+                    ))
                 }
-                _ => {}
+                _ => Ok(()),
             },
             EventSMLabel::Working(start_time) => match event.event {
                 WorkEvent::StatusChange(uuid, _, WorkStatus::Away)
                     if self.staff_member.uuid() == uuid =>
                 {
-                    self.add_time(start_time, event.created_at);
+                    self.add_time(start_time, event.created_at)?;
                     self.label = EventSMLabel::Away;
+                    Ok(())
                 }
                 WorkEvent::StatusChange(uuid, _, WorkStatus::Working)
                     if self.staff_member.uuid() == uuid =>
                 {
-                    self.log_error(format!("Encountered StatusChange to Working at {} while staff {} was already working.", event.created_at, self.staff_member.uuid()));
-                }
-                WorkEvent::EventOver => {
-                    self.log_error(format!(
-                        "Encountered EventOver at {} while staff {} was still working. Assume they worked until that time.",
+                    Err(StatisticsError::AlreadyWorking(
                         event.created_at,
-                        self.staff_member.uuid()
-                    ));
-                    self.add_time(start_time, event.created_at);
-                    self.label = EventSMLabel::Away;
+                        self.staff_member.name.clone(),
+                    ))
                 }
-                _ => {}
+                WorkEvent::EventOver => Err(StatisticsError::OverWhileWorking(
+                    event.created_at,
+                    self.staff_member.name.clone(),
+                )),
+                _ => Ok(()),
             },
         }
     }

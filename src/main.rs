@@ -5,7 +5,7 @@ extern crate serde_derive;
 
 mod tabs;
 
-use std::{error, fmt};
+use std::{error, fmt, io};
 
 use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
@@ -18,7 +18,7 @@ use iced_aw::{modal, Card, Modal, TabLabel, Tabs};
 use iced_native::{event::Status, keyboard, window, Event};
 use stechuhr::models::*;
 
-use tabs::management::{ManagementMessage, ManagementTab};
+use tabs::management::{ManagementError, ManagementMessage, ManagementTab};
 use tabs::statistics::{StatisticsError, StatsMessage, StatsTab};
 use tabs::timetrack::{TimetrackMessage, TimetrackTab};
 
@@ -59,6 +59,16 @@ impl SharedData {
     fn prompt_info(&mut self, msg: String) {
         self.prompt_modal_state.show(true);
         self.prompt_modal_state.inner_mut().msg = msg;
+    }
+
+    /// Handle a result of some computation by showing the error message in a prompt.
+    /// TODO also log to syslog
+    fn handle_result(&mut self, result: Result<(), StechuhrError>) {
+        if let Err(e) = result {
+            let e = e.to_string();
+            log::error!("{}", e);
+            self.prompt_info(e);
+        }
     }
 }
 
@@ -268,6 +278,8 @@ impl Application for Stechuhr {
 }
 
 trait Tab<'a: 'b, 'b> {
+    type Message;
+
     fn title(&self) -> String;
 
     fn tab_label(&self) -> TabLabel;
@@ -289,24 +301,30 @@ trait Tab<'a: 'b, 'b> {
 
     fn content(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message>;
 
-    /// Handle a result of some computation by showing the error message in a prompt.
-    /// TODO also log to syslog
-    fn handle_result(
+    fn update(&'a mut self, shared: &'b mut SharedData, message: Self::Message) {
+        let result = self.update_result(shared, message);
+        shared.handle_result(result);
+    }
+
+    fn update_result(
         &'a mut self,
         shared: &'b mut SharedData,
-        result: Result<(), StechuhrError>,
-    ) -> () {
-        if let Err(e) = result {
-            let e = e.to_string();
-            log::error!("{}", e);
-            shared.prompt_info(e);
-        }
-    }
+        message: Self::Message,
+    ) -> Result<(), StechuhrError>;
 }
 
 #[derive(Debug)]
 pub enum StechuhrError {
+    Management(ManagementError),
     Statistics(StatisticsError),
+    CSV(csv::Error),
+    IO(io::Error),
+}
+
+impl From<ManagementError> for StechuhrError {
+    fn from(e: ManagementError) -> Self {
+        Self::Management(e)
+    }
 }
 
 impl From<StatisticsError> for StechuhrError {
@@ -315,13 +333,27 @@ impl From<StatisticsError> for StechuhrError {
     }
 }
 
+impl From<csv::Error> for StechuhrError {
+    fn from(e: csv::Error) -> Self {
+        Self::CSV(e)
+    }
+}
+
+impl From<io::Error> for StechuhrError {
+    fn from(e: io::Error) -> Self {
+        Self::IO(e)
+    }
+}
+
 impl error::Error for StechuhrError {}
 
 impl fmt::Display for StechuhrError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description: String = match self {
-            StechuhrError::Statistics(e) => return e.fmt(f),
-        };
-        f.write_str(&description)
+        match self {
+            StechuhrError::Management(e) => e.fmt(f),
+            StechuhrError::Statistics(e) => e.fmt(f),
+            StechuhrError::CSV(e) => e.fmt(f),
+            StechuhrError::IO(e) => e.fmt(f),
+        }
     }
 }
