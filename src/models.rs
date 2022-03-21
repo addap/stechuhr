@@ -1,5 +1,4 @@
 use crate::schema::{events, passwords, staff};
-use chrono::{self, NaiveDate};
 use chrono::{Local, NaiveDateTime};
 use diesel::deserialize::{self, FromSql, Queryable};
 use diesel::serialize::{self, Output, ToSql};
@@ -50,9 +49,8 @@ pub enum WorkEvent {
     StatusChange(i32, String, WorkStatus),
     EventStart,
     EventOver,
-    Whoami(String, Option<String>),
     Info(String),
-    Warning(String),
+    Error(String),
 }
 
 impl fmt::Display for WorkEvent {
@@ -63,16 +61,9 @@ impl fmt::Display for WorkEvent {
             }
             WorkEvent::EventStart => String::from("Event gestartet"),
             WorkEvent::EventOver => String::from("Event gestoppt"),
-            WorkEvent::Whoami(cardid, name) => {
-                if let Some(name) = name {
-                    format!("Der Dongle mit ID \"{}\" gehört {}", cardid, name)
-                } else {
-                    format!("Der Dongle mit ID \"{}\" gehört niemandem", cardid)
-                }
-            }
             // TODO can we add color with the formatter?
             WorkEvent::Info(msg) => msg.clone(),
-            WorkEvent::Warning(msg) => msg.clone(),
+            WorkEvent::Error(msg) => msg.clone(),
         };
 
         fmt::Display::fmt(&str, f)

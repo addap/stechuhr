@@ -175,9 +175,9 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
         content.map(Message::Timetrack)
     }
 
-    fn update_result(
-        &mut self,
-        shared: &mut SharedData,
+    fn update_result<'c: 'd, 'd>(
+        &'c mut self,
+        shared: &'d mut SharedData,
         message: TimetrackMessage,
     ) -> Result<(), StechuhrError> {
         match message {

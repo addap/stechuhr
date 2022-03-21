@@ -350,9 +350,9 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
         content.map(Message::Management)
     }
 
-    fn update_result(
-        &'a mut self,
-        shared: &'b mut SharedData,
+    fn update_result<'c: 'd, 'd>(
+        &'c mut self,
+        shared: &'d mut SharedData,
         message: ManagementMessage,
     ) -> Result<(), StechuhrError> {
         match message {
@@ -423,10 +423,15 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
                 );
                 self.whoami_modal_state.show(false);
 
-                let name =
-                    StaffMember::get_by_card_id(&shared.staff, &cardid).map(|sm| sm.name.clone());
-
-                shared.log_event(WorkEvent::Whoami(cardid, name));
+                let msg = match StaffMember::get_by_card_id(&shared.staff, &cardid) {
+                    Some(staff_member) => format!(
+                        "Der Dongle mit ID \"{}\" gehört {}",
+                        cardid,
+                        staff_member.name.clone()
+                    ),
+                    None => format!("Der Dongle mit ID \"{}\" gehört niemandem", cardid),
+                };
+                shared.prompt_info(msg);
             }
         }
         Ok(())

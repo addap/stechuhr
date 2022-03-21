@@ -11,8 +11,8 @@ use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
 use dotenv::dotenv;
 use iced::{
-    button, executor, scrollable, Align, Application, Button, Column, Command, Container, Element,
-    HorizontalAlignment, Length, Scrollable, Settings, Subscription, Text,
+    button, executor, Align, Application, Button, Column, Command, Container, Element, Length,
+    Settings, Subscription, Text,
 };
 use iced_aw::{modal, Card, Modal, TabLabel, Tabs};
 use iced_native::{event::Status, keyboard, window, Event};
@@ -66,8 +66,9 @@ impl SharedData {
     fn handle_result(&mut self, result: Result<(), StechuhrError>) {
         if let Err(e) = result {
             let e = e.to_string();
-            log::error!("{}", e);
-            self.prompt_info(e);
+            log::error!("{}", &e);
+            self.prompt_info(e.clone());
+            self.log_event(WorkEvent::Error(e));
         }
     }
 }
@@ -306,9 +307,9 @@ trait Tab<'a: 'b, 'b> {
         shared.handle_result(result);
     }
 
-    fn update_result(
-        &'a mut self,
-        shared: &'b mut SharedData,
+    fn update_result<'c: 'd, 'd>(
+        &'c mut self,
+        shared: &'d mut SharedData,
         message: Self::Message,
     ) -> Result<(), StechuhrError>;
 }

@@ -42,14 +42,6 @@ impl<'a> EventSM<'a> {
                     self.label = EventSMLabel::Working(event.created_at);
                     Ok(())
                 }
-                WorkEvent::StatusChange(uuid, _, WorkStatus::Away)
-                    if self.staff_member.uuid() == uuid =>
-                {
-                    Err(StatisticsError::AlreadyAway(
-                        event.created_at,
-                        self.staff_member.name.clone(),
-                    ))
-                }
                 _ => Ok(()),
             },
             EventSMLabel::Working(start_time) => match event.event {

@@ -114,11 +114,16 @@ impl StatsTab {
                 .format_localized("%B-%Y", Locale::de_DE)
                 .to_string()
         );
-        let mut wtr = csv::Writer::from_path(filename)?;
+        let mut wtr = csv::Writer::from_path(&filename)?;
         for hours in &staff_hours {
             wtr.serialize(hours)?;
         }
         wtr.flush()?;
+
+        shared.prompt_info(format!(
+            "Arbeitszeit wurde in der Datei {} gespeichert",
+            filename,
+        ));
         Ok(())
     }
 }
@@ -169,9 +174,9 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for StatsTab {
         content.map(Message::Statistics)
     }
 
-    fn update_result(
-        &mut self,
-        shared: &mut SharedData,
+    fn update_result<'c: 'd, 'd>(
+        &'c mut self,
+        shared: &'d mut SharedData,
         message: StatsMessage,
     ) -> Result<(), StechuhrError> {
         match message {
@@ -224,7 +229,10 @@ impl fmt::Display for StatisticsError {
                 date, name
             ),
             StatisticsError::StaffStillWorking(name) => {
-                format!("Staff {} is still working at end ov evaluation", name)
+                format!(
+                    "Staff {} is still working at the end of the evaluation",
+                    name
+                )
             }
             StatisticsError::DurationError(d1, d2) => {
                 format!("Error adding durations {} and {}", d1, d2)
