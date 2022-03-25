@@ -1,12 +1,12 @@
 use chrono::Locale;
 use iced::{
-    button, text_input, Button, Column, Container, Element, HorizontalAlignment, Length, Row, Text,
-    TextInput,
+    button, text_input, Align, Button, Column, Container, Element, HorizontalAlignment, Image,
+    Length, Row, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
 
-use crate::{Message, SharedData, StechuhrError, Tab};
+use crate::{Message, SharedData, StechuhrError, Tab, TEXT_SIZE, TEXT_SIZE_BIG};
 
 const PIN_LENGTH: usize = 4;
 const CARDID_LENGTH: usize = 10;
@@ -15,7 +15,6 @@ pub struct TimetrackTab {
     break_input_value: String,
     break_input_uuid: Option<i32>,
     // widget states
-    end_party_button_state: button::State,
     break_input_state: text_input::State,
     break_modal_state: modal::State<BreakModalState>,
 }
@@ -32,7 +31,6 @@ pub enum TimetrackMessage {
     SubmitBreakInput,
     ConfirmSubmitBreakInput,
     CancelSubmitBreakInput,
-    EndEvent,
 }
 
 impl TimetrackTab {
@@ -40,7 +38,6 @@ impl TimetrackTab {
         TimetrackTab {
             break_input_value: String::new(),
             break_input_uuid: None,
-            end_party_button_state: button::State::default(),
             break_input_state: text_input::State::default(),
             // TODO why does State not take the type argument <BreakModalState> here?
             break_modal_state: modal::State::default(),
@@ -62,6 +59,33 @@ impl TimetrackTab {
     }
 }
 
+impl SharedData {
+    fn get_staff_view(&self) -> Container<'static, TimetrackMessage> {
+        let staff_view = self
+            .staff
+            .iter()
+            .fold(Column::new(), |staff_view, staff_member| {
+                let img = Image::new(staff_member.status.to_emoji())
+                    .width(Length::Units(TEXT_SIZE))
+                    .height(Length::Units(TEXT_SIZE));
+                staff_view.push(
+                    Row::new()
+                        .spacing(20)
+                        .push(
+                            Text::new(format!(
+                                "{}: {}",
+                                staff_member.name,
+                                staff_member.status.to_string()
+                            ))
+                            .size(TEXT_SIZE),
+                        )
+                        .push(img),
+                )
+            });
+        Container::new(staff_view)
+    }
+}
+
 impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
     type Message = TimetrackMessage;
 
@@ -76,52 +100,42 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
     fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
         /* Normally the textinput must be focussed so that we can just swipe a rfid tag anytime.
          * But when the modal is open, we must unfocus, else it will capture an 'enter' press meant to close the modal that should be handled in the subcriptions in main.rs */
-        if self.break_modal_state.is_shown() {
+        if self.break_modal_state.is_shown() || shared.prompt_modal_state.is_shown() {
             self.break_input_state.unfocus();
         } else {
             self.break_input_state.focus();
         }
 
-        //view
-        let staff_view = shared
-            .staff
-            .iter()
-            .fold(Column::new(), |staff_view, staff_member| {
-                staff_view.push(Text::new(format!(
-                    "{}: {}",
-                    staff_member.name,
-                    staff_member.status.to_string()
-                )))
-            });
+        // big clock at the top
+        let clock = Text::new(
+            shared
+                .current_time
+                .format_localized("%A, %e. %B - %T", Locale::de_DE)
+                .to_string(),
+        )
+        .horizontal_alignment(HorizontalAlignment::Center)
+        .size(TEXT_SIZE_BIG);
 
-        let content = Container::new(
-            Column::new()
-                .padding(20)
-                .push(Text::new(
-                    shared
-                        .current_time
-                        .format_localized("%T, %A, %e. %B %Y", Locale::de_DE)
-                        .to_string(),
-                ))
-                .push(staff_view)
-                .push(
-                    TextInput::new(
-                        &mut self.break_input_state,
-                        "PIN eingeben/Dongle swipen",
-                        &self.break_input_value,
-                        TimetrackMessage::ChangeBreakInput,
-                    )
-                    .on_submit(TimetrackMessage::SubmitBreakInput),
-                )
-                .push(
-                    Button::new(
-                        &mut self.end_party_button_state,
-                        Text::new("Event beenden")
-                            .horizontal_alignment(HorizontalAlignment::Center),
-                    )
-                    .on_press(TimetrackMessage::EndEvent),
-                ),
-        );
+        let staff_view = shared.get_staff_view();
+
+        let dongle_input = TextInput::new(
+            &mut self.break_input_state,
+            "PIN eingeben/Dongle swipen",
+            &self.break_input_value,
+            TimetrackMessage::ChangeBreakInput,
+        )
+        .on_submit(TimetrackMessage::SubmitBreakInput)
+        .size(TEXT_SIZE)
+        .width(Length::Units(300));
+
+        let content = Column::new()
+            .align_items(Align::Center)
+            .width(Length::Fill)
+            .padding(20)
+            .spacing(10)
+            .push(clock.height(Length::FillPortion(10)))
+            .push(staff_view.height(Length::FillPortion(70)))
+            .push(dongle_input);
 
         let break_modal_value = if let Some(break_uuid) = self.break_input_uuid {
             let staff_member = StaffMember::get_by_uuid_mut(&mut shared.staff, break_uuid)
@@ -170,8 +184,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
         .backdrop(TimetrackMessage::CancelSubmitBreakInput)
         .on_esc(TimetrackMessage::CancelSubmitBreakInput);
 
-        let content: Element<'_, TimetrackMessage> = Container::new(modal).into();
-
+        let content: Element<'_, TimetrackMessage> = modal.into();
         content.map(Message::Timetrack)
     }
 
@@ -185,19 +198,24 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
                 self.break_input_value = value;
             }
             TimetrackMessage::SubmitBreakInput => {
-                let input = self.break_input_value.trim();
+                let input = self.break_input_value.trim().to_owned();
 
                 if input.len() == PIN_LENGTH || input.len() == CARDID_LENGTH {
                     if let Some(staff_member) =
-                        StaffMember::get_by_pin_or_card_id(&shared.staff, input)
+                        StaffMember::get_by_pin_or_card_id(&shared.staff, &input)
                     {
                         self.break_modal_state.show(true);
                         self.break_input_uuid = Some(staff_member.uuid());
                     } else {
-                        println!("No matching staff member found for input {}.", input);
+                        self.break_input_value.clear();
+                        return Err(StechuhrError::Str(String::from("Unbekannte/r PIN/Dongle")));
                     }
                 } else {
-                    println!("Malformed input {}.", input);
+                    self.break_input_value.clear();
+                    return Err(StechuhrError::Str(format!(
+                        "\"{}\" is weder eine PIN noch ein Dongle",
+                        input
+                    )));
                 }
             }
             TimetrackMessage::ConfirmSubmitBreakInput => {
@@ -207,25 +225,6 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
                 self.break_modal_state.show(false);
                 self.break_input_uuid = None;
                 self.break_input_value.clear();
-            }
-            TimetrackMessage::EndEvent => {
-                let sign_off_events: Vec<_> = shared
-                    .staff
-                    .iter_mut()
-                    .filter(|staff_member| staff_member.status == WorkStatus::Working)
-                    .map(|staff_member| {
-                        let uuid = staff_member.uuid();
-                        let name = staff_member.name.clone();
-                        let new_status = WorkStatus::Away;
-                        staff_member.status = new_status;
-                        WorkEvent::StatusChange(uuid, name, new_status)
-                    })
-                    .collect();
-
-                for event in sign_off_events.into_iter() {
-                    shared.log_event(event);
-                }
-                shared.log_event(WorkEvent::EventOver);
             }
         }
         Ok(())

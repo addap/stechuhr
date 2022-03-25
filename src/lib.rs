@@ -23,40 +23,42 @@ pub fn load_staff(connection: &SqliteConnection) -> Vec<StaffMember> {
         .expect("Error loading staff from DB")
 }
 
-pub fn update_staff_member(staff_member: &StaffMember, connection: &SqliteConnection) {
+pub fn update_staff_member(
+    staff_member: &StaffMember,
+    connection: &SqliteConnection,
+) -> QueryResult<()> {
     diesel::update(staff_member)
         .set(staff_member)
-        .execute(connection)
-        .expect(&format!("Error updating staff {}", staff_member.name));
+        .execute(connection)?;
+    Ok(())
 }
 
-pub fn update_staff(staff_v: &[StaffMember], connection: &SqliteConnection) {
+pub fn update_staff(staff_v: &[StaffMember], connection: &SqliteConnection) -> QueryResult<()> {
     for staff_member in staff_v {
-        update_staff_member(staff_member, connection);
+        update_staff_member(staff_member, connection)?;
     }
+    Ok(())
 }
 
-pub fn insert_staff(staff_member: NewStaffMember, connection: &SqliteConnection) -> StaffMember {
+pub fn insert_staff(
+    staff_member: NewStaffMember,
+    connection: &SqliteConnection,
+) -> QueryResult<StaffMember> {
     // TODO uniqueness checks, so return Result
     use schema::staff::dsl::*;
 
     diesel::insert_into(staff)
         .values(&staff_member)
-        .execute(connection)
-        .expect(&format!("Error inserting new staff {}", staff_member.name));
+        .execute(connection)?;
 
     let mut newly_inserted = staff
         .order_by(id.desc())
         .limit(1)
-        .load::<StaffMember>(connection)
-        .expect(&format!(
-            "Error loading newly inserted staff {}",
-            staff_member.name
-        ));
+        .load::<StaffMember>(connection)?;
 
     let newly_inserted = newly_inserted.remove(0);
 
-    newly_inserted
+    Ok(newly_inserted)
 }
 
 pub fn insert_event(new_event: &NewWorkEventT, connection: &SqliteConnection) -> WorkEventT {

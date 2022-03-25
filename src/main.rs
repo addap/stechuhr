@@ -5,23 +5,24 @@ extern crate serde_derive;
 
 mod tabs;
 
-use std::{error, fmt, io};
-
 use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
 use dotenv::dotenv;
 use iced::{
-    button, executor, Align, Application, Button, Column, Command, Container, Element, Length,
-    Settings, Subscription, Text,
+    button, executor, Align, Application, Button, Color, Column, Command, Container, Element,
+    Length, Settings, Subscription, Text,
 };
-use iced_aw::{modal, Card, Modal, TabLabel, Tabs};
+use iced_aw::{modal, Card, Modal, TabBar, TabLabel};
 use iced_native::{event::Status, keyboard, window, Event};
+use std::{error, fmt, io};
 use stechuhr::models::*;
 
 use tabs::management::{ManagementError, ManagementMessage, ManagementTab};
 use tabs::statistics::{StatisticsError, StatsMessage, StatsTab};
 use tabs::timetrack::{TimetrackMessage, TimetrackTab};
 
+const TEXT_SIZE: u16 = 24;
+const TEXT_SIZE_BIG: u16 = 42;
 const HEADER_SIZE: u16 = 32;
 const TAB_PADDING: u16 = 16;
 const LOG_LENGTH: usize = 6;
@@ -56,6 +57,10 @@ impl SharedData {
         self.events.push(eventt);
     }
 
+    fn log_info(&mut self, msg: String) {
+        self.log_event(WorkEvent::Info(msg));
+    }
+
     fn prompt_info(&mut self, msg: String) {
         self.prompt_modal_state.show(true);
         self.prompt_modal_state.inner_mut().msg = msg;
@@ -73,6 +78,29 @@ impl SharedData {
     }
 }
 
+impl SharedData {
+    fn get_logview(&self) -> Container<'static, Message> {
+        let initial_logview = Column::new().spacing(5);
+        let logview = self
+            .events
+            .iter()
+            // TODO a better way to take the last n items from an iterator
+            .rev()
+            .take(LOG_LENGTH)
+            .rev()
+            .fold(initial_logview, |column, eventt| {
+                let offset = *Local::now().offset();
+                let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
+                column.push(Text::new(format!(
+                    "{}: {}",
+                    time.format_localized("%T", Locale::de_DE).to_string(),
+                    eventt.event
+                )))
+            });
+        Container::new(logview)
+    }
+}
+
 #[derive(Debug, PartialEq, Default)]
 struct PromptModalState {
     msg: String,
@@ -81,11 +109,39 @@ struct PromptModalState {
 
 struct Stechuhr {
     shared: SharedData,
-    active_tab: usize,
+    active_tab: StechuhrTab,
     should_exit: bool,
     timetrack: TimetrackTab,
     management: ManagementTab,
     statistics: StatsTab,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StechuhrTab {
+    Timetrack = 0,
+    Management = 1,
+    Statistics = 2,
+}
+
+// impl StechuhrTab {
+//     fn get_tab<'a>(self, state: &'a Stechuhr) -> Box<dyn Tab<Message = Message>> {
+//         match self {
+//             StechuhrTab::Timetrack => Box::new(state.timetrack),
+//             StechuhrTab::Management => &state.management,
+//             StechuhrTab::Statistics => &state.statistics,
+//         }
+//     }
+// }
+
+impl From<usize> for StechuhrTab {
+    fn from(active_tab: usize) -> Self {
+        match active_tab {
+            0 => Self::Timetrack,
+            1 => Self::Management,
+            2 => Self::Statistics,
+            _ => panic!("Unknown active_tab: {}", active_tab),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +153,8 @@ enum Message {
     Timetrack(TimetrackMessage),
     Management(ManagementMessage),
     Statistics(StatsMessage),
+    // sent in main subscriptions and delegated down to the prompts
+    PressedEnter,
 }
 
 impl Application for Stechuhr {
@@ -121,7 +179,7 @@ impl Application for Stechuhr {
                     connection: connection,
                     prompt_modal_state: modal::State::default(),
                 },
-                active_tab: 0,
+                active_tab: StechuhrTab::Timetrack,
                 should_exit: false,
                 timetrack: TimetrackTab::new(),
                 management,
@@ -153,8 +211,10 @@ impl Application for Stechuhr {
                         "Es sind noch Personen am Arbeiten. Bitte zuerst das Event beenden.",
                     ));
                 } else {
-                    stechuhr::update_staff(&self.shared.staff, &self.shared.connection);
-                    self.should_exit = true;
+                    match stechuhr::update_staff(&self.shared.staff, &self.shared.connection) {
+                        Ok(()) => self.should_exit = true,
+                        Err(e) => self.shared.handle_result(Err(StechuhrError::Diesel(e))),
+                    }
                 }
             }
             Message::ExitPrompt => {
@@ -163,7 +223,7 @@ impl Application for Stechuhr {
             }
             Message::TabSelected(new_tab) => {
                 self.management.deauth();
-                self.active_tab = new_tab;
+                self.active_tab = StechuhrTab::from(new_tab);
             }
             Message::Timetrack(timetrack_message) => {
                 self.timetrack.update(&mut self.shared, timetrack_message);
@@ -174,12 +234,24 @@ impl Application for Stechuhr {
             Message::Statistics(stats_message) => {
                 self.statistics.update(&mut self.shared, stats_message);
             }
+            Message::PressedEnter => {
+                if self.shared.prompt_modal_state.is_shown() {
+                    self.shared.prompt_modal_state.show(false);
+                } else {
+                    match StechuhrTab::from(self.active_tab) {
+                        StechuhrTab::Timetrack => self
+                            .timetrack
+                            .update(&mut self.shared, TimetrackMessage::CancelSubmitBreakInput),
+                        _ => {}
+                    }
+                }
+            }
         };
         Command::none()
     }
 
     // TODO what is '_?
-    fn view<'a>(&'a mut self) -> Element<'_, Message> {
+    fn view<'a>(&'a mut self) -> Element<'_, Self::Message> {
         // let theme = self
         //     .settings_tab
         //     .settings()
@@ -193,48 +265,32 @@ impl Application for Stechuhr {
         //     .height(Length::Fill);
 
         // TODO I want to use a scrollbar and snap to the bottom when a new event is added, but snapping is only supported in iced 0.4 which is not published on cargo yet
-        let scrollbar = Column::new()
-            .padding(10)
-            .spacing(10)
+
+        let logview = Container::new(self.shared.get_logview())
+            .padding(TAB_PADDING)
             .width(Length::Fill)
-            .height(Length::Fill);
-        let logview = self.shared.events.iter().rev().take(LOG_LENGTH).rev().fold(
-            scrollbar,
-            |column, eventt| {
-                let offset = *Local::now().offset();
-                let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
-                column.push(Text::new(format!(
-                    "{}: {}",
-                    time.format_localized("%T", Locale::de_DE).to_string(),
-                    eventt.event
-                )))
-            },
-        );
+            .height(Length::FillPortion(20));
 
-        let tabs = Tabs::with_tabs(
-            self.active_tab,
-            vec![
-                (
-                    self.timetrack.tab_label(),
-                    self.timetrack.view(&mut self.shared),
-                ),
-                (
-                    self.management.tab_label(),
-                    self.management.view(&mut self.shared),
-                ),
-                (
-                    self.statistics.tab_label(),
-                    self.statistics.view(&mut self.shared),
-                ),
-            ],
-            Message::TabSelected,
-        )
-        .tab_bar_position(iced_aw::TabBarPosition::Top)
-        .text_size(HEADER_SIZE);
+        let tab_bar = TabBar::new(self.active_tab as usize, Message::TabSelected)
+            .padding(5)
+            .text_size(HEADER_SIZE)
+            .push(self.timetrack.tab_label())
+            .push(self.management.tab_label())
+            .push(self.statistics.tab_label());
 
-        let content = Column::new()
-            .push(Container::new(tabs).height(Length::FillPortion(80)))
-            .push(logview.height(Length::FillPortion(20)));
+        let tab_content = match self.active_tab {
+            StechuhrTab::Timetrack => self.timetrack.view(&mut self.shared),
+            StechuhrTab::Management => self.management.view(&mut self.shared),
+            StechuhrTab::Statistics => self.statistics.view(&mut self.shared),
+        };
+        let tab_content = Container::new(tab_content)
+            .padding(TAB_PADDING)
+            .width(Length::Fill)
+            .height(Length::FillPortion(80))
+            .center_x()
+            .center_y();
+
+        let content = Column::new().push(tab_bar).push(tab_content).push(logview);
 
         let modal = Modal::new(&mut self.shared.prompt_modal_state, content, move |state| {
             Card::new(Text::new("Information"), Text::new(&state.msg))
@@ -251,7 +307,9 @@ impl Application for Stechuhr {
         .backdrop(Message::ExitPrompt)
         .on_esc(Message::ExitPrompt);
 
-        modal.into()
+        let element: Element<'_, Self::Message> = modal.into();
+        // element.explain(Color::BLACK)
+        element
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -269,9 +327,7 @@ impl Application for Stechuhr {
                         key_code: keyboard::KeyCode::Enter,
                         ..
                     }),
-                ) => Some(Message::Timetrack(
-                    TimetrackMessage::ConfirmSubmitBreakInput,
-                )),
+                ) => Some(Message::PressedEnter),
                 (_, _) => None,
             }),
         ])
@@ -286,18 +342,17 @@ trait Tab<'a: 'b, 'b> {
     fn tab_label(&self) -> TabLabel;
 
     fn view(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
-        let column = Column::new()
-            .spacing(20)
-            .push(Text::new(self.title()).size(HEADER_SIZE))
-            .push(Container::new(self.content(shared)));
+        // each tab has its name in the upper right corner
+        let title = Text::new(self.title()).size(HEADER_SIZE);
 
-        Container::new(column)
+        // center the content of each tab
+        let content = Container::new(self.content(shared))
             .width(Length::Fill)
             .height(Length::Fill)
-            .align_x(Align::Center)
-            .align_y(Align::Start)
-            .padding(TAB_PADDING)
-            .into()
+            .center_x()
+            .align_y(Align::Start);
+
+        Column::new().push(title).push(content).into()
     }
 
     fn content(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message>;
@@ -318,8 +373,11 @@ trait Tab<'a: 'b, 'b> {
 pub enum StechuhrError {
     Management(ManagementError),
     Statistics(StatisticsError),
+    Model(ModelError),
+    Diesel(diesel::result::Error),
     CSV(csv::Error),
     IO(io::Error),
+    Str(String),
 }
 
 impl From<ManagementError> for StechuhrError {
@@ -331,6 +389,12 @@ impl From<ManagementError> for StechuhrError {
 impl From<StatisticsError> for StechuhrError {
     fn from(e: StatisticsError) -> Self {
         Self::Statistics(e)
+    }
+}
+
+impl From<ModelError> for StechuhrError {
+    fn from(e: ModelError) -> Self {
+        Self::Model(e)
     }
 }
 
@@ -346,6 +410,12 @@ impl From<io::Error> for StechuhrError {
     }
 }
 
+impl From<diesel::result::Error> for StechuhrError {
+    fn from(e: diesel::result::Error) -> Self {
+        Self::Diesel(e)
+    }
+}
+
 impl error::Error for StechuhrError {}
 
 impl fmt::Display for StechuhrError {
@@ -353,8 +423,11 @@ impl fmt::Display for StechuhrError {
         match self {
             StechuhrError::Management(e) => e.fmt(f),
             StechuhrError::Statistics(e) => e.fmt(f),
+            StechuhrError::Model(e) => e.fmt(f),
+            StechuhrError::Diesel(e) => e.fmt(f),
             StechuhrError::CSV(e) => e.fmt(f),
             StechuhrError::IO(e) => e.fmt(f),
+            StechuhrError::Str(msg) => f.write_str(msg),
         }
     }
 }

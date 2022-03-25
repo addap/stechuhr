@@ -7,9 +7,9 @@ default-run = "stechuhr"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-iced = { version = "0.3", features = ["tokio"] }
+iced = { version = "0.3", features = ["tokio", "image"] }
 iced_native = { version = "0.4" }
-iced_aw = { git = "https://github.com/iced-rs/iced_aw", branch = "main", default-features = false, features = ["modal", "colors", "card", "tabs", "date_picker"] }
+iced_aw = { git = "https://github.com/iced-rs/iced_aw", branch = "main", default-features = false, features = ["modal", "colors", "card", "tabs", "date_picker", "tab_bar"] }
 chrono = { version = "0.4", features = ["unstable-locales", "serde"] }
 time = { version = "0.3", features = ["local-offset"] }
 diesel = { version = "1.4", features = ["sqlite", "chrono"] }
@@ -23,3 +23,5 @@ pbkdf2 = { version = "0.10.1", features = ["std"] }
 rand_core = { version = "0.6", features = ["std"] }
 log = "0.4.14"
 env_logger = "0.9.0"
+regex = "1"
+lazy_static = "1.4"

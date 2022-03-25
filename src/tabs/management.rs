@@ -2,7 +2,6 @@
 
 use std::{error, fmt, mem};
 
-use diesel::SqliteConnection;
 use iced::{
     button, text_input, Button, Column, Element, HorizontalAlignment, Length, Row, Text, TextInput,
 };
@@ -59,16 +58,16 @@ impl StaffMemberState {
 }
 /* Abstracts over the vector of staff members and the vector of their UI elements. */
 struct MemberRow<'a> {
-    staff: &'a mut Vec<StaffMember>,
+    shared: &'a mut SharedData,
     states: &'a mut Vec<StaffMemberState>,
 }
 
 impl<'a> MemberRow<'a> {
-    fn from(staff: &'a mut Vec<StaffMember>, states: &'a mut Vec<StaffMemberState>) -> Self {
-        MemberRow { staff, states }
+    fn from(shared: &'a mut SharedData, states: &'a mut Vec<StaffMemberState>) -> Self {
+        MemberRow { shared, states }
     }
 
-    fn change_pin_state(&mut self, idx: usize, new_pin: String) -> Result<(), ManagementError> {
+    fn change_pin_state(&mut self, idx: usize, new_pin: String) -> Result<(), StechuhrError> {
         let state = self
             .states
             .get_mut(idx)
@@ -77,11 +76,7 @@ impl<'a> MemberRow<'a> {
         Ok(())
     }
 
-    fn change_cardid_state(
-        &mut self,
-        idx: usize,
-        new_cardid: String,
-    ) -> Result<(), ManagementError> {
+    fn change_cardid_state(&mut self, idx: usize, new_cardid: String) -> Result<(), StechuhrError> {
         let state = self
             .states
             .get_mut(idx)
@@ -90,21 +85,27 @@ impl<'a> MemberRow<'a> {
         Ok(())
     }
 
-    fn submit(&mut self, idx: usize, connection: &SqliteConnection) -> Result<(), ManagementError> {
+    fn submit(&mut self, idx: usize) -> Result<(), StechuhrError> {
         let state = self
             .states
             .get_mut(idx)
             .ok_or(ManagementError::IndexError(idx))?;
         let staff_member = self
+            .shared
             .staff
             .get_mut(idx)
             .ok_or(ManagementError::IndexError(idx))?;
 
-        staff_member.pin.clone_from(&state.pin_value);
-        staff_member.cardid.clone_from(&state.cardid_value);
+        let pin = &state.pin_value;
+        let cardid = &state.cardid_value;
+        let _ = pin.parse::<PIN>()?;
+        let _ = cardid.parse::<Cardid>()?;
+
+        staff_member.pin.clone_from(pin);
+        staff_member.cardid.clone_from(cardid);
 
         // save in db
-        stechuhr::update_staff_member(staff_member, connection);
+        stechuhr::update_staff_member(staff_member, &self.shared.connection)?;
         Ok(())
     }
 
@@ -113,19 +114,23 @@ impl<'a> MemberRow<'a> {
         new_name: String,
         new_pin: String,
         new_cardid: String,
-        connection: &SqliteConnection,
-    ) {
+    ) -> Result<(), StechuhrError> {
         self.states.push(
             StaffMemberState::default()
                 .with_pin(&new_pin)
                 .with_cardid(&new_cardid),
         );
+
+        // have to declare the message here since we move the string and the new_staff_member before we can use it in the call to log_info
+        let success_message = format!("Neuer Mitarbeiter {} hinzugefügt", new_name);
+
         // save in DB
-        let new_staff_member = stechuhr::insert_staff(
-            NewStaffMember::new(new_name, new_pin, new_cardid),
-            connection,
-        );
-        self.staff.push(new_staff_member);
+        let new_staff_member = NewStaffMember::new(new_name, new_pin, new_cardid)?;
+        let new_staff_member = stechuhr::insert_staff(new_staff_member, &self.shared.connection)?;
+        self.shared.staff.push(new_staff_member);
+
+        self.shared.log_info(success_message);
+        Ok(())
     }
 
     // fn delete(&mut self, idx: usize) {
@@ -151,6 +156,7 @@ pub struct ManagementTab {
     new_cardid_state: text_input::State,
     new_cardid_value: String,
     new_submit_state: button::State,
+    end_party_button_state: button::State,
 }
 
 #[derive(Debug, Default)]
@@ -175,6 +181,7 @@ pub enum ManagementMessage {
     // DeleteRow(usize),
     ChangeNewRow(Option<String>, Option<String>, Option<String>),
     SubmitNewRow,
+    EndEvent,
 }
 
 impl ManagementTab {
@@ -202,13 +209,15 @@ impl ManagementTab {
             new_cardid_state: text_input::State::default(),
             new_cardid_value: String::from(""),
             new_submit_state: button::State::default(),
+
+            end_party_button_state: button::State::default(),
         }
     }
 }
 
 impl ManagementTab {
-    fn staff_edit_view(&mut self, shared: &mut SharedData) -> Element<'_, ManagementMessage> {
-        let mut staff_col = Column::new().padding(20);
+    fn internal_view(&mut self, shared: &mut SharedData) -> Element<'_, ManagementMessage> {
+        let mut staff_edit = Column::new().padding(20);
 
         for (idx, (staff_member, state)) in shared
             .staff
@@ -241,7 +250,7 @@ impl ManagementTab {
                         .on_press(ManagementMessage::SubmitRow(idx))
                         .width(Length::FillPortion(1)),
                 );
-            staff_col = staff_col.push(staff_row);
+            staff_edit = staff_edit.push(staff_row);
         }
 
         // last inputs for new staff member
@@ -279,13 +288,24 @@ impl ManagementTab {
                         .on_press(ManagementMessage::SubmitNewRow)
                         .width(Length::FillPortion(1)),
                 );
-            staff_col = staff_col.push(new_row);
+            staff_edit = staff_edit.push(new_row);
         }
 
-        staff_col.into()
+        let event_over = Button::new(
+            &mut self.end_party_button_state,
+            Text::new("Event beenden").horizontal_alignment(HorizontalAlignment::Center),
+        )
+        .on_press(ManagementMessage::EndEvent);
+
+        let content = Column::new().push(staff_edit).push(event_over);
+        content.into()
     }
 
-    fn password_view(&mut self) -> Element<'_, ManagementMessage> {
+    fn public_view(&mut self, shared: &mut SharedData) -> Element<'_, ManagementMessage> {
+        if shared.prompt_modal_state.is_shown() {
+            self.admin_password_state.unfocus();
+        }
+
         let content = Column::new()
             .push(
                 TextInput::new(
@@ -333,7 +353,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
     type Message = ManagementMessage;
 
     fn title(&self) -> String {
-        String::from("Benutzerverwaltung")
+        String::from("Verwaltung")
     }
 
     fn tab_label(&self) -> TabLabel {
@@ -342,9 +362,9 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
 
     fn content(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
         let content: Element<'_, ManagementMessage> = if self.authorized {
-            self.staff_edit_view(shared)
+            self.internal_view(shared)
         } else {
-            self.password_view()
+            self.public_view(shared)
         };
 
         content.map(Message::Management)
@@ -361,23 +381,22 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
             }
             ManagementMessage::SubmitPassword => {
                 if stechuhr::verify_password(self.admin_password_value.trim(), &shared.connection) {
+                    self.admin_password_value.clear();
                     self.auth();
                 } else {
-                    // TODO mark pw field as red
+                    self.admin_password_value.clear();
+                    return Err(ManagementError::InvalidPassword.into());
                 }
-                self.admin_password_value.clear();
             }
             ManagementMessage::ChangePIN(idx, new_pin) => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states)
-                    .change_pin_state(idx, new_pin)?;
+                MemberRow::from(shared, &mut self.staff_states).change_pin_state(idx, new_pin)?;
             }
             ManagementMessage::ChangeCardID(idx, new_cardid) => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states)
+                MemberRow::from(shared, &mut self.staff_states)
                     .change_cardid_state(idx, new_cardid)?;
             }
             ManagementMessage::SubmitRow(idx) => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states)
-                    .submit(idx, &shared.connection)?;
+                MemberRow::from(shared, &mut self.staff_states).submit(idx)?;
             }
             // ManagementMessage::DeleteRow(idx) => {
             //     MemberRow::from(&mut shared.staff, &mut self.staff_states)
@@ -395,12 +414,11 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
                 }
             }
             ManagementMessage::SubmitNewRow => {
-                MemberRow::from(&mut shared.staff, &mut self.staff_states).submit_new_row(
+                MemberRow::from(shared, &mut self.staff_states).submit_new_row(
                     self.new_name_value.clone(),
                     self.new_pin_value.clone(),
                     self.new_cardid_value.clone(),
-                    &shared.connection,
-                );
+                )?;
 
                 self.new_name_value.clear();
                 self.new_pin_value.clear();
@@ -433,6 +451,25 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
                 };
                 shared.prompt_info(msg);
             }
+            ManagementMessage::EndEvent => {
+                let sign_off_events: Vec<_> = shared
+                    .staff
+                    .iter_mut()
+                    .filter(|staff_member| staff_member.status == WorkStatus::Working)
+                    .map(|staff_member| {
+                        let uuid = staff_member.uuid();
+                        let name = staff_member.name.clone();
+                        let new_status = WorkStatus::Away;
+                        staff_member.status = new_status;
+                        WorkEvent::StatusChange(uuid, name, new_status)
+                    })
+                    .collect();
+
+                for event in sign_off_events.into_iter() {
+                    shared.log_event(event);
+                }
+                shared.log_event(WorkEvent::EventOver);
+            }
         }
         Ok(())
     }
@@ -441,6 +478,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
 #[derive(Debug)]
 pub enum ManagementError {
     IndexError(usize),
+    InvalidPassword,
 }
 
 impl error::Error for ManagementError {}
@@ -451,6 +489,7 @@ impl fmt::Display for ManagementError {
             ManagementError::IndexError(idx) => {
                 format!("Index out of range: {}", idx)
             }
+            ManagementError::InvalidPassword => String::from("Ungültiges Passwort"),
         };
         f.write_str(&description)
     }

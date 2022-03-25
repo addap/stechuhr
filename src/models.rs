@@ -3,10 +3,35 @@ use chrono::{Local, NaiveDateTime};
 use diesel::deserialize::{self, FromSql, Queryable};
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::*;
+use lazy_static::lazy_static;
 use pbkdf2::password_hash::PasswordHash as PBKDF2Hash;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_lexpr;
-use std::{fmt, io};
+use std::str::FromStr;
+use std::{error, fmt, io};
+
+#[derive(Debug, Clone)]
+pub enum ModelError {
+    EmptyName,
+    ParsePIN(String),
+    ParseCardid(String),
+}
+
+impl error::Error for ModelError {}
+
+impl fmt::Display for ModelError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = match self {
+            ModelError::ParsePIN(pin) => format!("PIN muss aus 4 Ziffern bestehen: \"{}\"", pin),
+            ModelError::ParseCardid(cardid) => {
+                format!("Karten-ID muss aus 10 Ziffern bestehen: \"{}\"", cardid)
+            }
+            ModelError::EmptyName => String::from("Name darf nicht leer sein"),
+        };
+        f.write_str(&description)
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize)]
 #[sql_type = "Bool"]
@@ -28,6 +53,13 @@ impl WorkStatus {
         match self {
             WorkStatus::Away => WorkStatus::Working,
             WorkStatus::Working => WorkStatus::Away,
+        }
+    }
+
+    pub fn to_emoji(&self) -> &'static str {
+        match self {
+            WorkStatus::Away => "resources/cross-mark.png",
+            WorkStatus::Working => "resources/check-mark.png",
         }
     }
 }
@@ -90,6 +122,40 @@ impl NewWorkEventT {
         NewWorkEventT {
             created_at: Local::now().naive_local(),
             event,
+        }
+    }
+}
+
+pub struct PIN;
+
+impl FromStr for PIN {
+    type Err = ModelError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^\d{4}$").unwrap();
+        }
+        if RE.is_match(s) {
+            Ok(PIN)
+        } else {
+            Err(ModelError::ParsePIN(s.to_owned()))
+        }
+    }
+}
+
+pub struct Cardid;
+
+impl FromStr for Cardid {
+    type Err = ModelError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^\d{10}$").unwrap();
+        }
+        if RE.is_match(s) {
+            Ok(Cardid)
+        } else {
+            Err(ModelError::ParseCardid(s.to_owned()))
         }
     }
 }
@@ -165,8 +231,14 @@ impl StaffMember {
 }
 
 impl NewStaffMember {
-    pub fn new(name: String, pin: String, cardid: String) -> Self {
-        Self { name, pin, cardid }
+    pub fn new(name: String, pin: String, cardid: String) -> Result<Self, ModelError> {
+        if name.len() == 0 {
+            return Err(ModelError::EmptyName);
+        }
+        let _ = pin.parse::<PIN>()?;
+        let _ = cardid.parse::<Cardid>()?;
+
+        Ok(Self { name, pin, cardid })
     }
 }
 
