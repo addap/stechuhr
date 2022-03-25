@@ -1,0 +1,5 @@
+./resources/
+./migrations/
+./target/debug/stechuhr
+./target/debug/add_admin_pw
+./bootstrap.sh
