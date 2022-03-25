@@ -124,6 +124,7 @@ impl StatsTab {
             "Arbeitszeit wurde in der Datei {} gespeichert",
             filename,
         ));
+        opener::open(filename)?;
         Ok(())
     }
 }

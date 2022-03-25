@@ -375,6 +375,7 @@ pub enum StechuhrError {
     Statistics(StatisticsError),
     Model(ModelError),
     Diesel(diesel::result::Error),
+    Opener(opener::OpenError),
     CSV(csv::Error),
     IO(io::Error),
     Str(String),
@@ -416,6 +417,12 @@ impl From<diesel::result::Error> for StechuhrError {
     }
 }
 
+impl From<opener::OpenError> for StechuhrError {
+    fn from(e: opener::OpenError) -> Self {
+        Self::Opener(e)
+    }
+}
+
 impl error::Error for StechuhrError {}
 
 impl fmt::Display for StechuhrError {
@@ -425,6 +432,7 @@ impl fmt::Display for StechuhrError {
             StechuhrError::Statistics(e) => e.fmt(f),
             StechuhrError::Model(e) => e.fmt(f),
             StechuhrError::Diesel(e) => e.fmt(f),
+            StechuhrError::Opener(e) => e.fmt(f),
             StechuhrError::CSV(e) => e.fmt(f),
             StechuhrError::IO(e) => e.fmt(f),
             StechuhrError::Str(msg) => f.write_str(msg),
