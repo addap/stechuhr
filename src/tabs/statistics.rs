@@ -71,10 +71,12 @@ impl StatsTab {
         let start_time = self.date.naive_local().first_dom().and_time(_9am);
         let end_time = self.date.naive_local().last_dom().succ().and_time(_9am);
         shared.log_info(format!(
-            "Generating CSV for month {}, between {} and {}",
-            self.date.format("%B %Y").to_string(),
-            start_time,
-            end_time
+            "Generiere CSV für {}, zwischen {} und {}",
+            self.date
+                .format_localized("%B %Y", Locale::de_DE)
+                .to_string(),
+            start_time.format("%T").to_string(),
+            end_time.format("%T").to_string()
         ));
 
         let events = stechuhr::load_events(start_time, end_time, &shared.connection);
