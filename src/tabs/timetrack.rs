@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use chrono::Locale;
 use iced::{
     button, text_input, Align, Button, Column, Container, Element, HorizontalAlignment, Image,
@@ -57,12 +59,9 @@ impl TimetrackTab {
             self.break_input_value.clear();
         }
     }
-}
 
-impl SharedData {
-    fn get_staff_view(&self) -> Container<'static, TimetrackMessage> {
-        let staff_view = self
-            .staff
+    fn get_staff_column(staff: &[StaffMember]) -> Column<'static, TimetrackMessage> {
+        let column = staff
             .iter()
             .fold(Column::new(), |staff_view, staff_member| {
                 let img = Image::new(staff_member.status.to_emoji())
@@ -82,9 +81,34 @@ impl SharedData {
                         .push(img),
                 )
             });
+
+        column.width(Length::Fill).align_items(Align::Center)
+    }
+
+    fn get_staff_view(staff: &[StaffMember]) -> Container<'static, TimetrackMessage> {
+        const COLUMNS: usize = 3;
+        let column_size = staff.len() / COLUMNS;
+        let mut extra = staff.len() % COLUMNS;
+
+        let mut staff_view = Row::new();
+        for c in 0..COLUMNS {
+            let start = c * column_size;
+            let end = start
+                + column_size
+                + if extra > 0 {
+                    extra -= 1;
+                    1
+                } else {
+                    0
+                };
+            let end = min(staff.len(), end);
+            staff_view = staff_view.push(TimetrackTab::get_staff_column(&staff[start..end]));
+        }
         Container::new(staff_view)
     }
 }
+
+impl SharedData {}
 
 impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
     type Message = TimetrackMessage;
@@ -116,7 +140,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
         .horizontal_alignment(HorizontalAlignment::Center)
         .size(TEXT_SIZE_BIG);
 
-        let staff_view = shared.get_staff_view();
+        let staff_view = TimetrackTab::get_staff_view(&shared.staff);
 
         let dongle_input = TextInput::new(
             &mut self.break_input_state,
