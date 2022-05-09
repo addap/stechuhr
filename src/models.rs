@@ -68,7 +68,7 @@ impl fmt::Display for WorkStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
             WorkStatus::Away => "Pause",
-            WorkStatus::Working => "An der Arbeit",
+            WorkStatus::Working => "Arbeit",
         };
 
         fmt::Display::fmt(str, f)

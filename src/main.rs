@@ -243,7 +243,7 @@ impl Application for Stechuhr {
                     match StechuhrTab::from(self.active_tab) {
                         StechuhrTab::Timetrack => self
                             .timetrack
-                            .update(&mut self.shared, TimetrackMessage::CancelSubmitBreakInput),
+                            .update(&mut self.shared, TimetrackMessage::ConfirmSubmitBreakInput),
                         _ => {}
                     }
                 }

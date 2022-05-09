@@ -70,7 +70,7 @@ impl TimetrackTab {
             .width(Length::FillPortion(5))
             .align_items(Align::End);
         let icons = Column::new()
-            .width(Length::FillPortion(2))
+            .width(Length::FillPortion(1))
             .align_items(Align::Start);
 
         let column = staff
@@ -205,7 +205,7 @@ impl Tab for TimetrackTab {
                             &mut state.confirm_state,
                             Text::new("Ok").horizontal_alignment(HorizontalAlignment::Center),
                         )
-                        .width(Length::Fill)
+                        .width(Length::Shrink)
                         .on_press(TimetrackMessage::ConfirmSubmitBreakInput),
                     )
                     .push(
@@ -213,11 +213,11 @@ impl Tab for TimetrackTab {
                             &mut state.cancel_state,
                             Text::new("Zurück").horizontal_alignment(HorizontalAlignment::Center),
                         )
-                        .width(Length::Fill)
+                        .width(Length::Shrink)
                         .on_press(TimetrackMessage::CancelSubmitBreakInput),
                     ),
             )
-            .max_width(300)
+            // .max_width(300)
             .width(Length::Shrink)
             .on_close(TimetrackMessage::CancelSubmitBreakInput)
             .into()
