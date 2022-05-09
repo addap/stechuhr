@@ -360,7 +360,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
         TabLabel::Text(self.title())
     }
 
-    fn content(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
+    fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
         let content: Element<'_, ManagementMessage> = if self.authorized {
             self.internal_view(shared)
         } else {
@@ -370,9 +370,9 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
         content.map(Message::Management)
     }
 
-    fn update_result<'c: 'd, 'd>(
-        &'c mut self,
-        shared: &'d mut SharedData,
+    fn update_result(
+        &mut self,
+        shared: &mut SharedData,
         message: ManagementMessage,
     ) -> Result<(), StechuhrError> {
         match message {
@@ -449,7 +449,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
                     ),
                     None => format!("Der Dongle mit ID \"{}\" gehört niemandem", cardid),
                 };
-                shared.prompt_info(msg);
+                shared.prompt_message(msg);
             }
             ManagementMessage::EndEvent => {
                 let sign_off_events: Vec<_> = shared

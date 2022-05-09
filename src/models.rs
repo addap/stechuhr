@@ -94,8 +94,8 @@ impl fmt::Display for WorkEvent {
             WorkEvent::EventStart => String::from("Event gestartet"),
             WorkEvent::EventOver => String::from("Event gestoppt"),
             // TODO can we add color with the formatter?
-            WorkEvent::Info(msg) => msg.clone(),
-            WorkEvent::Error(msg) => msg.clone(),
+            WorkEvent::Info(msg) => format!("Info: {}", msg),
+            WorkEvent::Error(msg) => format!("Error: {}", msg),
         };
 
         fmt::Display::fmt(&str, f)

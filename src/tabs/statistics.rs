@@ -122,7 +122,7 @@ impl StatsTab {
         }
         wtr.flush()?;
 
-        shared.prompt_info(format!(
+        shared.prompt_message(format!(
             "Arbeitszeit wurde in der Datei {} gespeichert",
             filename,
         ));
@@ -177,9 +177,9 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for StatsTab {
         content.map(Message::Statistics)
     }
 
-    fn update_result<'c: 'd, 'd>(
-        &'c mut self,
-        shared: &'d mut SharedData,
+    fn update_result(
+        &mut self,
+        shared: &mut SharedData,
         message: StatsMessage,
     ) -> Result<(), StechuhrError> {
         match message {

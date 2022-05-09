@@ -3,7 +3,7 @@ use std::cmp::min;
 use chrono::Locale;
 use iced::{
     button, text_input, Align, Button, Column, Container, Element, HorizontalAlignment, Image,
-    Length, Row, Text, TextInput,
+    Length, Row, Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
@@ -60,29 +60,39 @@ impl TimetrackTab {
         }
     }
 
-    fn get_staff_column(staff: &[StaffMember]) -> Column<'static, TimetrackMessage> {
+    fn get_staff_column(
+        staff: &[StaffMember],
+    ) -> (
+        Column<'static, TimetrackMessage>,
+        Column<'static, TimetrackMessage>,
+    ) {
+        let names = Column::new()
+            .width(Length::FillPortion(5))
+            .align_items(Align::End);
+        let icons = Column::new()
+            .width(Length::FillPortion(2))
+            .align_items(Align::Start);
+
         let column = staff
             .iter()
-            .fold(Column::new(), |staff_view, staff_member| {
+            .fold((names, icons), |(names, icons), staff_member| {
                 let img = Image::new(staff_member.status.to_emoji())
                     .width(Length::Units(TEXT_SIZE))
                     .height(Length::Units(TEXT_SIZE));
-                staff_view.push(
-                    Row::new()
-                        .spacing(20)
-                        .push(
-                            Text::new(format!(
-                                "{}: {}",
-                                staff_member.name,
-                                staff_member.status.to_string()
-                            ))
-                            .size(TEXT_SIZE),
-                        )
-                        .push(img),
+                (
+                    names.push(
+                        Text::new(format!(
+                            "{}: {}",
+                            staff_member.name,
+                            staff_member.status.to_string()
+                        ))
+                        .size(TEXT_SIZE),
+                    ),
+                    icons.push(img),
                 )
             });
 
-        column.width(Length::Fill).align_items(Align::Center)
+        column
     }
 
     fn get_staff_view(staff: &[StaffMember]) -> Container<'static, TimetrackMessage> {
@@ -90,9 +100,13 @@ impl TimetrackTab {
         let column_size = staff.len() / COLUMNS;
         let mut extra = staff.len() % COLUMNS;
 
-        let mut staff_view = Row::new();
-        for c in 0..COLUMNS {
-            let start = c * column_size;
+        let padding1 = Space::new(Length::FillPortion(5), Length::Fill);
+        let padding2 = Space::new(Length::FillPortion(5), Length::Fill);
+
+        let mut staff_view = Row::new().spacing(20).push(padding1);
+        let mut start = 0;
+
+        for _ in 0..COLUMNS {
             let end = start
                 + column_size
                 + if extra > 0 {
@@ -102,9 +116,12 @@ impl TimetrackTab {
                     0
                 };
             let end = min(staff.len(), end);
-            staff_view = staff_view.push(TimetrackTab::get_staff_column(&staff[start..end]));
+            let (names, icons) = TimetrackTab::get_staff_column(&staff[start..end]);
+            staff_view = staff_view.push(names).push(icons);
+
+            start = end;
         }
-        Container::new(staff_view)
+        Container::new(staff_view.push(padding2))
     }
 }
 
@@ -212,9 +229,9 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
         content.map(Message::Timetrack)
     }
 
-    fn update_result<'c: 'd, 'd>(
-        &'c mut self,
-        shared: &'d mut SharedData,
+    fn update_result(
+        &mut self,
+        shared: &mut SharedData,
         message: TimetrackMessage,
     ) -> Result<(), StechuhrError> {
         match message {
@@ -232,7 +249,7 @@ impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
                         self.break_input_uuid = Some(staff_member.uuid());
                     } else {
                         self.break_input_value.clear();
-                        return Err(StechuhrError::Str(String::from("Unbekannte/r PIN/Dongle")));
+                        return Err(StechuhrError::Str(String::from("Unbekannte PIN/Dongle")));
                     }
                 } else {
                     self.break_input_value.clear();

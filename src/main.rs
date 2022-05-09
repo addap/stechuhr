@@ -51,37 +51,64 @@ pub struct SharedData {
 }
 
 impl SharedData {
+    /// Log a WorkEvent in the scrollbar area at the bottom and also persist it to the DB.
     fn log_event(&mut self, event: WorkEvent) {
         let new_eventt = NewWorkEventT::new(event);
         let eventt = stechuhr::insert_event(&new_eventt, &self.connection);
         self.events.push(eventt);
     }
 
+    /// Log an information event.
+    /// TODO remove when logging to journal
     fn log_info(&mut self, msg: String) {
         self.log_event(WorkEvent::Info(msg));
     }
 
-    fn prompt_info(&mut self, msg: String) {
+    /// Log an error event.
+    /// TODO remove when logging to journal
+    fn log_error(&mut self, e: String) {
+        self.log_event(WorkEvent::Error(e));
+    }
+
+    /// Open a modal to more prominently show some piece of information.
+    fn prompt_message(&mut self, msg: String) {
         self.prompt_modal_state.show(true);
         self.prompt_modal_state.inner_mut().msg = msg;
     }
 
     /// Handle a result of some computation by showing the error message in a prompt.
-    /// TODO also log to syslog
+    /// TODO also log to journal
     fn handle_result(&mut self, result: Result<(), StechuhrError>) {
         if let Err(e) = result {
             let e = e.to_string();
             log::error!("{}", &e);
-            self.prompt_info(e.clone());
-            self.log_event(WorkEvent::Error(e));
+            self.prompt_message(e.clone());
+            self.log_error(e);
         }
     }
 }
 
-impl SharedData {
+#[derive(Debug, PartialEq, Default)]
+struct PromptModalState {
+    msg: String,
+    ok_button_state: button::State,
+}
+
+struct Stechuhr {
+    shared: SharedData,
+    active_tab: StechuhrTab,
+    should_exit: bool,
+    timetrack: TimetrackTab,
+    management: ManagementTab,
+    statistics: StatsTab,
+}
+
+impl Stechuhr {
+    /// Generate a container containing a scrollable with all WorkEvents.
     fn get_logview(&self) -> Container<'static, Message> {
         let initial_logview = Column::new().spacing(5);
         let logview = self
+            .shared
             .events
             .iter()
             // TODO a better way to take the last n items from an iterator
@@ -101,37 +128,12 @@ impl SharedData {
     }
 }
 
-#[derive(Debug, PartialEq, Default)]
-struct PromptModalState {
-    msg: String,
-    ok_button_state: button::State,
-}
-
-struct Stechuhr {
-    shared: SharedData,
-    active_tab: StechuhrTab,
-    should_exit: bool,
-    timetrack: TimetrackTab,
-    management: ManagementTab,
-    statistics: StatsTab,
-}
-
 #[derive(Debug, Clone, Copy)]
 enum StechuhrTab {
     Timetrack = 0,
     Management = 1,
     Statistics = 2,
 }
-
-// impl StechuhrTab {
-//     fn get_tab<'a>(self, state: &'a Stechuhr) -> Box<dyn Tab<Message = Message>> {
-//         match self {
-//             StechuhrTab::Timetrack => Box::new(state.timetrack),
-//             StechuhrTab::Management => &state.management,
-//             StechuhrTab::Statistics => &state.statistics,
-//         }
-//     }
-// }
 
 impl From<usize> for StechuhrTab {
     fn from(active_tab: usize) -> Self {
@@ -207,8 +209,8 @@ impl Application for Stechuhr {
                     .iter()
                     .any(|staff_member| staff_member.status == WorkStatus::Working)
                 {
-                    self.shared.prompt_info(String::from(
-                        "Es sind noch Personen am Arbeiten. Bitte zuerst das Event beenden.",
+                    self.shared.prompt_message(String::from(
+                        "Es sind noch Personen am Arbeiten. Bitte zuerst alle auf \"Pause\" stellen oder das Event beenden.",
                     ));
                 } else {
                     match stechuhr::update_staff(&self.shared.staff, &self.shared.connection) {
@@ -250,23 +252,16 @@ impl Application for Stechuhr {
         Command::none()
     }
 
-    // TODO what is '_?
-    fn view<'a>(&'a mut self) -> Element<'_, Self::Message> {
+    // DONE what is '_ in Element<'_, ...>?
+    // explicitly elided lifetime. can also be set to 'a
+    fn view(&mut self) -> Element<'_, Self::Message> {
         // let theme = self
         //     .settings_tab
         //     .settings()
         //     .tab_bar_theme
         //     .unwrap_or_default();
 
-        // let mut scrollbar = Scrollable::new(&mut self.scroll_state)
-        //     .padding(10)
-        //     .spacing(10)
-        //     .width(Length::Fill)
-        //     .height(Length::Fill);
-
-        // TODO I want to use a scrollbar and snap to the bottom when a new event is added, but snapping is only supported in iced 0.4 which is not published on cargo yet
-
-        let logview = Container::new(self.shared.get_logview())
+        let logview = Container::new(self.get_logview())
             .padding(TAB_PADDING)
             .width(Length::Fill)
             .height(Length::FillPortion(20));
@@ -299,8 +294,8 @@ impl Application for Stechuhr {
                         .width(Length::Shrink)
                         .on_press(Message::ExitPrompt),
                 )
-                .max_width(300)
-                .width(Length::Fill)
+                // .max_width(300)
+                .width(Length::Shrink)
                 .on_close(Message::ExitPrompt)
                 .into()
         })
@@ -308,8 +303,8 @@ impl Application for Stechuhr {
         .on_esc(Message::ExitPrompt);
 
         let element: Element<'_, Self::Message> = modal.into();
-        // element.explain(Color::BLACK)
-        element
+        element.explain(Color::BLACK)
+        // element
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -355,16 +350,16 @@ trait Tab<'a: 'b, 'b> {
         Column::new().push(title).push(content).into()
     }
 
-    fn content(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message>;
+    fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message>;
 
     fn update(&'a mut self, shared: &'b mut SharedData, message: Self::Message) {
         let result = self.update_result(shared, message);
         shared.handle_result(result);
     }
 
-    fn update_result<'c: 'd, 'd>(
-        &'c mut self,
-        shared: &'d mut SharedData,
+    fn update_result(
+        &mut self,
+        shared: &mut SharedData,
         message: Self::Message,
     ) -> Result<(), StechuhrError>;
 }
