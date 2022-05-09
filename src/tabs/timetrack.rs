@@ -127,7 +127,7 @@ impl TimetrackTab {
 
 impl SharedData {}
 
-impl<'a: 'b, 'b> Tab<'a, 'b> for TimetrackTab {
+impl Tab for TimetrackTab {
     type Message = TimetrackMessage;
 
     fn title(&self) -> String {

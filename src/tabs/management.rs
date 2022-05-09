@@ -349,7 +349,7 @@ impl ManagementTab {
     }
 }
 
-impl<'a: 'b, 'b> Tab<'a, 'b> for ManagementTab {
+impl Tab for ManagementTab {
     type Message = ManagementMessage;
 
     fn title(&self) -> String {

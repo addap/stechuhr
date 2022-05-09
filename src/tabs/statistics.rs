@@ -131,7 +131,7 @@ impl StatsTab {
     }
 }
 
-impl<'a: 'b, 'b> Tab<'a, 'b> for StatsTab {
+impl Tab for StatsTab {
     type Message = StatsMessage;
 
     fn title(&self) -> String {

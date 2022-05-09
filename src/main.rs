@@ -329,14 +329,14 @@ impl Application for Stechuhr {
     }
 }
 
-trait Tab<'a: 'b, 'b> {
+trait Tab {
     type Message;
 
     fn title(&self) -> String;
 
     fn tab_label(&self) -> TabLabel;
 
-    fn view(&'a mut self, shared: &'b mut SharedData) -> Element<'_, Message> {
+    fn view(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
         // each tab has its name in the upper right corner
         let title = Text::new(self.title()).size(HEADER_SIZE);
 
@@ -352,7 +352,7 @@ trait Tab<'a: 'b, 'b> {
 
     fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message>;
 
-    fn update(&'a mut self, shared: &'b mut SharedData, message: Self::Message) {
+    fn update(&mut self, shared: &mut SharedData, message: Self::Message) {
         let result = self.update_result(shared, message);
         shared.handle_result(result);
     }
