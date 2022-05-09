@@ -1,7 +1,7 @@
 -- Create table for staff members
 CREATE TABLE staff (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     pin CHAR(4) NOT NULL UNIQUE,
     cardid CHAR(6) NOT NULL UNIQUE,
     status BOOLEAN NOT NULL DEFAULT FALSE

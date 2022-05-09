@@ -1,9 +1,9 @@
-// add users and change user names/pin/cardid
-
+//! Tab to add/change/get info about users
 use std::{error, fmt, mem};
 
 use iced::{
-    button, text_input, Button, Column, Element, HorizontalAlignment, Length, Row, Text, TextInput,
+    button, text_input, Align, Button, Column, Container, Element, HorizontalAlignment, Length,
+    Row, Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
@@ -11,6 +11,8 @@ use stechuhr::models::*;
 use crate::{Message, SharedData, StechuhrError, Tab};
 
 struct StaffMemberState {
+    name_state: text_input::State,
+    name_value: String,
     pin_state: text_input::State,
     pin_value: String,
     cardid_state: text_input::State,
@@ -20,6 +22,11 @@ struct StaffMemberState {
 }
 
 impl StaffMemberState {
+    fn with_name(mut self, name: &String) -> Self {
+        self.name_value.clone_from(name);
+        self
+    }
+
     fn with_pin(mut self, pin: &String) -> Self {
         self.pin_value.clone_from(pin);
         self
@@ -34,6 +41,8 @@ impl StaffMemberState {
 impl Default for StaffMemberState {
     fn default() -> Self {
         Self {
+            name_state: text_input::State::default(),
+            name_value: String::default(),
             pin_state: text_input::State::default(),
             pin_value: String::default(),
             cardid_state: text_input::State::default(),
@@ -44,92 +53,114 @@ impl Default for StaffMemberState {
     }
 }
 
-impl StaffMemberState {
-    fn new_from_staff(staff: &[StaffMember]) -> Vec<Self> {
-        staff
+/// Abstracts over the vector of staff members and the vector of their UI elements.
+struct StaffState {
+    member_states: Vec<StaffMemberState>,
+}
+
+impl From<&[StaffMember]> for StaffState {
+    fn from(staff: &[StaffMember]) -> Self {
+        let member_states = staff
             .iter()
             .map(|staff_member| {
                 StaffMemberState::default()
+                    .with_name(&staff_member.name)
                     .with_pin(&staff_member.pin)
                     .with_cardid(&staff_member.cardid)
             })
-            .collect()
+            .collect();
+
+        StaffState::new(member_states)
     }
 }
-/* Abstracts over the vector of staff members and the vector of their UI elements. */
-struct MemberRow<'a> {
-    shared: &'a mut SharedData,
-    states: &'a mut Vec<StaffMemberState>,
-}
 
-impl<'a> MemberRow<'a> {
-    fn from(shared: &'a mut SharedData, states: &'a mut Vec<StaffMemberState>) -> Self {
-        MemberRow { shared, states }
+impl StaffState {
+    fn new(member_states: Vec<StaffMemberState>) -> Self {
+        StaffState { member_states }
+    }
+
+    fn change_name_state(&mut self, idx: usize, new_name: String) -> Result<(), StechuhrError> {
+        let state = self
+            .member_states
+            .get_mut(idx)
+            .ok_or(ManagementError::IndexError(idx))?;
+        state.name_value = new_name;
+        Ok(())
     }
 
     fn change_pin_state(&mut self, idx: usize, new_pin: String) -> Result<(), StechuhrError> {
         let state = self
-            .states
+            .member_states
             .get_mut(idx)
             .ok_or(ManagementError::IndexError(idx))?;
-        state.cardid_value = new_pin;
+        state.pin_value = new_pin;
         Ok(())
     }
 
     fn change_cardid_state(&mut self, idx: usize, new_cardid: String) -> Result<(), StechuhrError> {
         let state = self
-            .states
+            .member_states
             .get_mut(idx)
             .ok_or(ManagementError::IndexError(idx))?;
         state.cardid_value = new_cardid;
         Ok(())
     }
 
-    fn submit(&mut self, idx: usize) -> Result<(), StechuhrError> {
+    fn submit(&mut self, shared: &mut SharedData, idx: usize) -> Result<(), StechuhrError> {
         let state = self
-            .states
+            .member_states
             .get_mut(idx)
             .ok_or(ManagementError::IndexError(idx))?;
-        let staff_member = self
-            .shared
+        let staff_member = shared
             .staff
             .get_mut(idx)
             .ok_or(ManagementError::IndexError(idx))?;
 
+        let name = &state.name_value;
         let pin = &state.pin_value;
         let cardid = &state.cardid_value;
-        let _ = pin.parse::<PIN>()?;
-        let _ = cardid.parse::<Cardid>()?;
 
+        // use same validation as in submit_new_row
+        NewStaffMember::validate(name, pin, cardid)?;
+        staff_member.name.clone_from(name);
         staff_member.pin.clone_from(pin);
         staff_member.cardid.clone_from(cardid);
 
         // save in db
-        stechuhr::update_staff_member(staff_member, &self.shared.connection)?;
+        stechuhr::update_staff_member(staff_member, &shared.connection)?;
+
+        let success_message = format!("Mitarbeiter {} erfolgreich geändert.", name);
+        shared.log_info(success_message);
+
         Ok(())
     }
 
     fn submit_new_row(
         &mut self,
+        shared: &mut SharedData,
         new_name: String,
         new_pin: String,
         new_cardid: String,
     ) -> Result<(), StechuhrError> {
-        self.states.push(
-            StaffMemberState::default()
-                .with_pin(&new_pin)
-                .with_cardid(&new_cardid),
-        );
-
-        // have to declare the message here since we move the string and the new_staff_member before we can use it in the call to log_info
-        let success_message = format!("Neuer Mitarbeiter {} hinzugefügt", new_name);
-
         // save in DB
         let new_staff_member = NewStaffMember::new(new_name, new_pin, new_cardid)?;
-        let new_staff_member = stechuhr::insert_staff(new_staff_member, &self.shared.connection)?;
-        self.shared.staff.push(new_staff_member);
+        let new_staff_member = stechuhr::insert_staff(new_staff_member, &shared.connection)?;
 
-        self.shared.log_info(success_message);
+        self.member_states.push(
+            StaffMemberState::default()
+                .with_name(&new_staff_member.name)
+                .with_pin(&new_staff_member.pin)
+                .with_cardid(&new_staff_member.cardid),
+        );
+
+        let success_message = format!(
+            "Neuer Mitarbeiter {} erfolgreich hinzugefügt.",
+            new_staff_member.name
+        );
+        shared.log_info(success_message);
+
+        shared.staff.push(new_staff_member);
+
         Ok(())
     }
 
@@ -147,7 +178,7 @@ pub struct ManagementTab {
     admin_password_value: String,
     admin_password_state: text_input::State,
     /* management of staff */
-    staff_states: Vec<StaffMemberState>,
+    staff_state: StaffState,
     /* adding new staff */
     new_name_state: text_input::State,
     new_name_value: String,
@@ -175,6 +206,7 @@ pub enum ManagementMessage {
     ChangePasswordInput(String),
     SubmitPassword,
     /* After Login */
+    ChangeName(usize, String),
     ChangePIN(usize, String),
     ChangeCardID(usize, String),
     SubmitRow(usize),
@@ -200,7 +232,7 @@ impl ManagementTab {
             authorized: false,
             admin_password_value: String::from(""),
             admin_password_state: text_input::State::default(),
-            staff_states: StaffMemberState::new_from_staff(staff),
+            staff_state: StaffState::from(staff),
 
             new_name_state: text_input::State::default(),
             new_name_value: String::from(""),
@@ -217,39 +249,47 @@ impl ManagementTab {
 
 impl ManagementTab {
     fn internal_view(&mut self, shared: &mut SharedData) -> Element<'_, ManagementMessage> {
+        const SPACING: u16 = 100;
         let mut staff_edit = Column::new().padding(20);
 
-        for (idx, (staff_member, state)) in shared
-            .staff
-            .iter_mut()
-            .zip(self.staff_states.iter_mut())
-            .enumerate()
-        {
+        for (idx, member_state) in self.staff_state.member_states.iter_mut().enumerate() {
             let staff_row = Row::new()
-                .push(Text::new(&staff_member.name).width(Length::FillPortion(3)))
                 .push(
                     TextInput::new(
-                        &mut state.pin_state,
+                        &mut member_state.name_state,
+                        "Name eingeben",
+                        &member_state.name_value.clone(),
+                        move |s| ManagementMessage::ChangeName(idx, s),
+                    )
+                    .width(Length::FillPortion(3)),
+                )
+                .push(
+                    TextInput::new(
+                        &mut member_state.pin_state,
                         "PIN eingeben",
-                        &state.pin_value.clone(),
+                        &member_state.pin_value.clone(),
                         move |s| ManagementMessage::ChangePIN(idx, s),
                     )
                     .width(Length::FillPortion(3)),
                 )
                 .push(
                     TextInput::new(
-                        &mut state.cardid_state,
+                        &mut member_state.cardid_state,
                         "click & swipe RFID dongle",
-                        &state.cardid_value.clone(),
+                        &member_state.cardid_value.clone(),
                         move |s| ManagementMessage::ChangeCardID(idx, s),
                     )
                     .width(Length::FillPortion(3)),
                 )
                 .push(
-                    Button::new(&mut state.submit_state, Text::new("Speichern"))
-                        .on_press(ManagementMessage::SubmitRow(idx))
-                        .width(Length::FillPortion(1)),
-                );
+                    Button::new(
+                        &mut member_state.submit_state,
+                        Text::new("Speichern").horizontal_alignment(HorizontalAlignment::Center),
+                    )
+                    .on_press(ManagementMessage::SubmitRow(idx))
+                    .width(Length::FillPortion(1)),
+                )
+                .spacing(SPACING);
             staff_edit = staff_edit.push(staff_row);
         }
 
@@ -259,7 +299,7 @@ impl ManagementTab {
                 .push(
                     TextInput::new(
                         &mut self.new_name_state,
-                        "Name",
+                        "Name eingeben",
                         &self.new_name_value,
                         |s| ManagementMessage::ChangeNewRow(Some(s), None, None),
                     )
@@ -284,10 +324,14 @@ impl ManagementTab {
                     .width(Length::FillPortion(3)),
                 )
                 .push(
-                    Button::new(&mut self.new_submit_state, Text::new("Hinzufügen"))
-                        .on_press(ManagementMessage::SubmitNewRow)
-                        .width(Length::FillPortion(1)),
-                );
+                    Button::new(
+                        &mut self.new_submit_state,
+                        Text::new("Speichern").horizontal_alignment(HorizontalAlignment::Center),
+                    )
+                    .on_press(ManagementMessage::SubmitNewRow)
+                    .width(Length::FillPortion(1)),
+                )
+                .spacing(SPACING);
             staff_edit = staff_edit.push(new_row);
         }
 
@@ -297,7 +341,11 @@ impl ManagementTab {
         )
         .on_press(ManagementMessage::EndEvent);
 
-        let content = Column::new().push(staff_edit).push(event_over);
+        let content = Column::new()
+            .push(staff_edit)
+            .push(event_over)
+            .spacing(SPACING)
+            .align_items(Align::Center);
         content.into()
     }
 
@@ -307,15 +355,22 @@ impl ManagementTab {
         }
 
         let content = Column::new()
+            .push(Space::new(Length::Fill, Length::Units(100)))
             .push(
-                TextInput::new(
-                    &mut self.admin_password_state,
-                    "Administrator Passwort",
-                    &self.admin_password_value,
-                    ManagementMessage::ChangePasswordInput,
-                )
-                .password()
-                .on_submit(ManagementMessage::SubmitPassword),
+                Row::new()
+                    .push(Space::new(Length::FillPortion(2), Length::Shrink))
+                    .push(
+                        TextInput::new(
+                            &mut self.admin_password_state,
+                            "Administrator Passwort",
+                            &self.admin_password_value,
+                            ManagementMessage::ChangePasswordInput,
+                        )
+                        .password()
+                        .on_submit(ManagementMessage::SubmitPassword)
+                        .width(Length::FillPortion(3)),
+                    )
+                    .push(Space::new(Length::FillPortion(2), Length::Shrink)),
             )
             .push(
                 Button::new(
@@ -324,7 +379,10 @@ impl ManagementTab {
                         .horizontal_alignment(HorizontalAlignment::Center),
                 )
                 .on_press(ManagementMessage::Whoami),
-            );
+            )
+            // .padding(100)
+            .spacing(100)
+            .align_items(Align::Center);
 
         let whoami_modal = Modal::new(&mut self.whoami_modal_state, content, move |state| {
             Card::new(Text::new("Dongle Abfrage"), {
@@ -388,15 +446,17 @@ impl Tab for ManagementTab {
                     return Err(ManagementError::InvalidPassword.into());
                 }
             }
+            ManagementMessage::ChangeName(idx, new_name) => {
+                self.staff_state.change_name_state(idx, new_name)?;
+            }
             ManagementMessage::ChangePIN(idx, new_pin) => {
-                MemberRow::from(shared, &mut self.staff_states).change_pin_state(idx, new_pin)?;
+                self.staff_state.change_pin_state(idx, new_pin)?;
             }
             ManagementMessage::ChangeCardID(idx, new_cardid) => {
-                MemberRow::from(shared, &mut self.staff_states)
-                    .change_cardid_state(idx, new_cardid)?;
+                self.staff_state.change_cardid_state(idx, new_cardid)?;
             }
             ManagementMessage::SubmitRow(idx) => {
-                MemberRow::from(shared, &mut self.staff_states).submit(idx)?;
+                self.staff_state.submit(shared, idx)?;
             }
             // ManagementMessage::DeleteRow(idx) => {
             //     MemberRow::from(&mut shared.staff, &mut self.staff_states)
@@ -414,7 +474,8 @@ impl Tab for ManagementTab {
                 }
             }
             ManagementMessage::SubmitNewRow => {
-                MemberRow::from(shared, &mut self.staff_states).submit_new_row(
+                self.staff_state.submit_new_row(
+                    shared,
                     self.new_name_value.clone(),
                     self.new_pin_value.clone(),
                     self.new_cardid_value.clone(),
@@ -441,13 +502,16 @@ impl Tab for ManagementTab {
                 );
                 self.whoami_modal_state.show(false);
 
-                let msg = match StaffMember::get_by_card_id(&shared.staff, &cardid) {
-                    Some(staff_member) => format!(
-                        "Der Dongle mit ID \"{}\" gehört {}",
-                        cardid,
-                        staff_member.name.clone()
-                    ),
-                    None => format!("Der Dongle mit ID \"{}\" gehört niemandem", cardid),
+                let msg = match cardid.parse::<Cardid>() {
+                    Ok(_) => match StaffMember::get_by_card_id(&shared.staff, &cardid) {
+                        Some(staff_member) => format!(
+                            "Der Dongle mit ID \"{}\" gehört {}",
+                            cardid,
+                            staff_member.name.clone()
+                        ),
+                        None => format!("Der Dongle mit ID \"{}\" gehört niemandem", cardid),
+                    },
+                    Err(e) => format!("Ungültige Dongle-ID. {}", e),
                 };
                 shared.prompt_message(msg);
             }

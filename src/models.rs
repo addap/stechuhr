@@ -25,7 +25,7 @@ impl fmt::Display for ModelError {
         let description = match self {
             ModelError::ParsePIN(pin) => format!("PIN muss aus 4 Ziffern bestehen: \"{}\"", pin),
             ModelError::ParseCardid(cardid) => {
-                format!("Karten-ID muss aus 10 Ziffern bestehen: \"{}\"", cardid)
+                format!("Dongle-ID muss aus 10 Ziffern bestehen: \"{}\"", cardid)
             }
             ModelError::EmptyName => String::from("Name darf nicht leer sein"),
         };
@@ -231,12 +231,18 @@ impl StaffMember {
 }
 
 impl NewStaffMember {
-    pub fn new(name: String, pin: String, cardid: String) -> Result<Self, ModelError> {
-        if name.len() == 0 {
+    pub fn validate(name: &str, pin: &str, cardid: &str) -> Result<(), ModelError> {
+        if name.is_empty() {
             return Err(ModelError::EmptyName);
         }
         let _ = pin.parse::<PIN>()?;
         let _ = cardid.parse::<Cardid>()?;
+
+        Ok(())
+    }
+
+    pub fn new(name: String, pin: String, cardid: String) -> Result<Self, ModelError> {
+        Self::validate(&name, &pin, &cardid)?;
 
         Ok(Self { name, pin, cardid })
     }
