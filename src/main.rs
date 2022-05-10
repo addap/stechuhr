@@ -12,11 +12,11 @@ use iced::alignment::Vertical;
 #[allow(unused_imports)]
 use iced::Color;
 use iced::{
-    button, executor, scrollable, Application, Button, Column, Command, Container, Element, Length,
-    Scrollable, Settings, Subscription, Text,
+    button, executor, scrollable, window, Application, Button, Column, Command, Container, Element,
+    Length, Scrollable, Settings, Subscription, Text,
 };
 use iced_aw::{modal, Card, Modal, TabBar, TabLabel};
-use iced_native::{event::Status, keyboard, window, Event};
+use iced_native::{event::Status, keyboard, Event};
 use std::{error, fmt, io};
 use stechuhr::models::*;
 
@@ -182,6 +182,11 @@ impl Application for Stechuhr {
         self.should_exit
     }
 
+    /// Always run Stechuhr in fullscreen mode.
+    fn mode(&self) -> window::Mode {
+        window::Mode::Fullscreen
+    }
+
     fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
         let staff = stechuhr::load_staff(&connection);
         let management = ManagementTab::new(&staff);
@@ -335,7 +340,9 @@ impl Application for Stechuhr {
                 .map(|_| Message::Tick(Local::now())),
             iced_native::subscription::events_with(|event, status| match (status, event) {
                 /* event when closing the window e.g. mod+Shift+q in i3 */
-                (_, Event::Window(window::Event::CloseRequested)) => Some(Message::ExitApplication),
+                (_, Event::Window(iced_native::window::Event::CloseRequested)) => {
+                    Some(Message::ExitApplication)
+                }
                 /* event when pressing enter key. At the moment we only send it to the timetrack tab to confirm the submission modal.
                  * we need to be careful to only handle events that have not been caputed elsewhere, otherwise we use the enter again which originally opened the submission modal */
                 (
