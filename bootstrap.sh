@@ -11,5 +11,5 @@ cat migrations/**/up.sql | sqlite3 stechuhr.sqlite3
 
 cat > .env << EOF
 DATABASE_URL="./stechuhr.sqlite3"
-RUST_LOG=info
+RUST_LOG=error
 EOF
