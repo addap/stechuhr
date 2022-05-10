@@ -99,6 +99,7 @@ struct PromptModalState {
 struct Stechuhr {
     shared: SharedData,
     log_scroll: scrollable::State,
+    window_mode: window::Mode,
     active_tab: StechuhrTab,
     should_exit: bool,
     timetrack: TimetrackTab,
@@ -171,6 +172,7 @@ enum Message {
     PressedEnter,
     ScrollSnap,
     Nop,
+    ToggleFullscreen,
 }
 
 impl Application for Stechuhr {
@@ -184,7 +186,7 @@ impl Application for Stechuhr {
 
     /// Always run Stechuhr in fullscreen mode.
     fn mode(&self) -> window::Mode {
-        window::Mode::Fullscreen
+        self.window_mode
     }
 
     fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
@@ -204,6 +206,7 @@ impl Application for Stechuhr {
                     prompt_modal_state: modal::State::default(),
                 },
                 log_scroll,
+                window_mode: window::Mode::Fullscreen,
                 active_tab: StechuhrTab::Timetrack,
                 should_exit: false,
                 timetrack: TimetrackTab::new(),
@@ -273,6 +276,12 @@ impl Application for Stechuhr {
             }
             Message::ScrollSnap => {
                 self.log_scroll.snap_to(1.0);
+            }
+            Message::ToggleFullscreen => {
+                self.window_mode = match self.window_mode {
+                    window::Mode::Fullscreen => window::Mode::Windowed,
+                    _ => window::Mode::Fullscreen,
+                }
             }
             Message::Nop => {}
         };
@@ -352,6 +361,13 @@ impl Application for Stechuhr {
                         ..
                     }),
                 ) => Some(Message::PressedEnter),
+                (
+                    _,
+                    Event::Keyboard(keyboard::Event::KeyPressed {
+                        key_code: keyboard::KeyCode::F11,
+                        ..
+                    }),
+                ) => Some(Message::ToggleFullscreen),
                 (_, _) => None,
             }),
         ])
