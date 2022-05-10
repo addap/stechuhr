@@ -8,7 +8,7 @@ use iced::{
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
 
-use crate::{Message, SharedData, StechuhrError, Tab};
+use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING};
 
 struct StaffMemberState {
     name_state: text_input::State,
@@ -420,11 +420,23 @@ impl Tab for ManagementTab {
 
     fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
         let content: Element<'_, ManagementMessage> = if self.authorized {
+            self.admin_password_state.unfocus();
+
             self.internal_view(shared)
         } else {
+            /* Normally the textinput must be focussed.
+             * But when the modal is open, we must unfocus, else it will capture an 'enter' press meant to close the modal that should be handled in the subcriptions in main.rs */
+            if self.whoami_modal_state.is_shown() || shared.prompt_modal_state.is_shown() {
+                self.admin_password_state.unfocus();
+            } else {
+                self.admin_password_state.focus();
+            }
+
             self.public_view(shared)
         };
 
+        let content: Element<'_, ManagementMessage> =
+            Container::new(content).padding(TAB_PADDING).into();
         content.map(Message::Management)
     }
 
