@@ -8,7 +8,7 @@ use iced::{
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
 
-use crate::{Message, SharedData, StechuhrError, Tab, TEXT_SIZE, TEXT_SIZE_BIG};
+use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING, TEXT_SIZE, TEXT_SIZE_BIG};
 
 const PIN_LENGTH: usize = 4;
 const CARDID_LENGTH: usize = 10;
@@ -172,7 +172,7 @@ impl Tab for TimetrackTab {
         let content = Column::new()
             .align_items(Align::Center)
             .width(Length::Fill)
-            .padding(20)
+            .padding(TAB_PADDING)
             .spacing(10)
             .push(clock.height(Length::FillPortion(10)))
             .push(staff_view.height(Length::FillPortion(70)))

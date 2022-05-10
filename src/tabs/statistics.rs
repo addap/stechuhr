@@ -14,15 +14,15 @@ mod time_eval;
 
 use std::{error, fmt};
 
-use chrono::{Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime};
-use iced::{button, Button, Column, Container, Element, Length, Row, Space, Text};
+use chrono::{Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+use iced::{button, Align, Button, Column, Container, Element, Length, Row, Text};
 use iced_aw::{
     date_picker::{self, DatePicker},
     TabLabel,
 };
 use stechuhr::date_ext::NaiveDateExt;
 
-use crate::{Message, SharedData, StechuhrError, Tab};
+use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING, TEXT_SIZE_BIG};
 use event_eval::EventSM;
 
 pub struct StatsTab {
@@ -52,7 +52,35 @@ struct PersonHours<'a> {
     #[serde(rename = "Minuten 24 - 9 Uhr")]
     minutes_3: i64,
     #[serde(rename = "Minuten Gewichtet Total")]
-    minutes_weigthed: i64,
+    minutes_weighted: i64,
+    #[serde(rename = "Zeit Gewichtet Total")]
+    time_weighted: String,
+}
+
+impl<'a> PersonHours<'a> {
+    fn new(
+        name: &'a str,
+        minutes_1: i64,
+        minutes_2: i64,
+        minutes_3: i64,
+        minutes_weighted: i64,
+    ) -> Self {
+        // multiply by precision before rounding to get as many decimal places
+        let time_weighted_hours = minutes_weighted / 60;
+        let time_weighted_minutes = minutes_weighted % 60;
+
+        Self {
+            name,
+            minutes_1,
+            minutes_2,
+            minutes_3,
+            minutes_weighted,
+            time_weighted: format!(
+                "{} Stunden und {} Minuten",
+                time_weighted_hours, time_weighted_minutes
+            ),
+        }
+    }
 }
 
 impl StatsTab {
@@ -69,14 +97,22 @@ impl StatsTab {
         // start and end time will be first and last day of the selected month, respectively
         let _9am = NaiveTime::from_hms(9, 0, 0);
         let start_time = self.date.naive_local().first_dom().and_time(_9am);
+        let start_time_local = Local.from_local_datetime(&start_time).unwrap();
+
         let end_time = self.date.naive_local().last_dom().succ().and_time(_9am);
+        let end_time_local = Local.from_local_datetime(&end_time).unwrap();
+
         shared.log_info(format!(
             "Generiere CSV für {}, zwischen {} und {}",
             self.date
                 .format_localized("%B %Y", Locale::de_DE)
                 .to_string(),
-            start_time.format("%T").to_string(),
-            end_time.format("%T").to_string()
+            start_time_local
+                .format_localized("%d. %B (%R)", Locale::de_DE)
+                .to_string(),
+            end_time_local
+                .format_localized("%d. %B (%R)", Locale::de_DE)
+                .to_string()
         ));
 
         let events = stechuhr::load_events(start_time, end_time, &shared.connection);
@@ -100,13 +136,13 @@ impl StatsTab {
             .map(|(staff_member, t)| {
                 let [minutes_1, minutes_2, minutes_3, minutes_weigthed] = t.num_minutes();
 
-                PersonHours {
-                    name: staff_member.name.as_ref(),
+                PersonHours::new(
+                    &staff_member.name[..],
                     minutes_1,
                     minutes_2,
                     minutes_3,
                     minutes_weigthed,
-                }
+                )
             })
             .collect();
 
@@ -143,37 +179,53 @@ impl Tab for StatsTab {
     }
 
     fn content(&mut self, _shared: &mut SharedData) -> Element<'_, Message> {
-        let dummy = Space::new(Length::Fill, Length::Fill);
+        let date = Container::new(
+            Text::new(
+                self.date
+                    .format_localized("%B %Y", Locale::de_DE)
+                    .to_string(),
+            )
+            .size(TEXT_SIZE_BIG),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x()
+        .center_y();
+
         let datepicker = DatePicker::new(
             &mut self.month_picker,
-            dummy,
+            date,
             StatsMessage::CancelDate,
             StatsMessage::SubmitDate,
         );
 
-        let content: Element<'_, StatsMessage> = Container::new(
-            Row::new().push(datepicker).push(
-                Column::new()
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .push(Text::new(
-                        self.date
-                            .format_localized("%B %Y", Locale::de_DE)
-                            .to_string(),
-                    ))
-                    .push(
-                        Button::new(&mut self.date_button_state, Text::new("Datum auswählen"))
-                            .on_press(StatsMessage::ChooseDate),
-                    )
-                    .push(
-                        Button::new(&mut self.generate_button_state, Text::new("CSV Generieren"))
+        let content = Row::new()
+            .push(datepicker)
+            .push(
+                Container::new(
+                    Column::new()
+                        .push(
+                            Button::new(&mut self.date_button_state, Text::new("Datum auswählen"))
+                                .on_press(StatsMessage::ChooseDate),
+                        )
+                        .push(
+                            Button::new(
+                                &mut self.generate_button_state,
+                                Text::new("CSV Generieren"),
+                            )
                             .on_press(StatsMessage::Generate),
-                    ),
-            ),
-        )
-        .padding(20)
-        .into();
+                        )
+                        .spacing(20),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x()
+                .center_y(),
+            )
+            .align_items(Align::Center);
 
+        let content: Element<'_, StatsMessage> =
+            Container::new(content).padding(TAB_PADDING).into();
         content.map(Message::Statistics)
     }
 
