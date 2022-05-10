@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Stechuhr
+Comment=Stechuhr Programm für die Festhalle
+Path=/tmp/stechuhr/
+Exec=/tmp/stechuhr/target/debug/stechuhr
+Icon=/tmp/stechuhr/resources/clock.svg
+Terminal=false
+Categories=Office
