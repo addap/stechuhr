@@ -8,9 +8,12 @@ mod tabs;
 use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
 use dotenv::dotenv;
+use iced::alignment::Vertical;
+#[allow(unused_imports)]
+use iced::Color;
 use iced::{
-    button, executor, Align, Application, Button, Color, Column, Command, Container, Element,
-    Length, Settings, Subscription, Text,
+    button, executor, scrollable, Application, Button, Column, Command, Container, Element, Length,
+    Scrollable, Settings, Subscription, Text,
 };
 use iced_aw::{modal, Card, Modal, TabBar, TabLabel};
 use iced_native::{event::Status, keyboard, window, Event};
@@ -25,7 +28,6 @@ const TEXT_SIZE: u16 = 24;
 const TEXT_SIZE_BIG: u16 = 42;
 const HEADER_SIZE: u16 = 32;
 const TAB_PADDING: u16 = 16;
-const LOG_LENGTH: usize = 6;
 
 pub fn main() -> iced::Result {
     // DONE what does this accomplish? any side-effects?
@@ -96,6 +98,7 @@ struct PromptModalState {
 
 struct Stechuhr {
     shared: SharedData,
+    log_scroll: scrollable::State,
     active_tab: StechuhrTab,
     should_exit: bool,
     timetrack: TimetrackTab,
@@ -105,26 +108,35 @@ struct Stechuhr {
 
 impl Stechuhr {
     /// Generate a container containing a scrollable with all WorkEvents.
-    fn get_logview(&self) -> Container<'static, Message> {
-        let initial_logview = Column::new().spacing(5);
-        let logview = self
-            .shared
-            .events
-            .iter()
-            // TODO a better way to take the last n items from an iterator
-            .rev()
-            .take(LOG_LENGTH)
-            .rev()
-            .fold(initial_logview, |column, eventt| {
-                let offset = *Local::now().offset();
-                let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
-                column.push(Text::new(format!(
-                    "{}: {}",
-                    time.format_localized("%T", Locale::de_DE).to_string(),
-                    eventt.event
-                )))
-            });
-        Container::new(logview)
+    fn get_logview<'a>(
+        log_scroll: &'a mut scrollable::State,
+        shared: &SharedData,
+    ) -> Element<'a, Message> {
+        let offset = *Local::now().offset();
+
+        let log_initial = Scrollable::new(log_scroll)
+            .on_scroll(|d| {
+                if d == 1.0 {
+                    Message::ScrollSnap
+                } else {
+                    Message::Nop
+                }
+            })
+            .width(Length::Fill)
+            .spacing(5)
+            .padding(5);
+
+        let log_view = shared.events.iter().fold(log_initial, |log_view, eventt| {
+            let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
+
+            log_view.push(Text::new(format!(
+                "{}: {}",
+                time.format_localized("%T", Locale::de_DE).to_string(),
+                eventt.event
+            )))
+        });
+
+        log_view.into()
     }
 }
 
@@ -157,6 +169,8 @@ enum Message {
     Statistics(StatsMessage),
     // sent in main subscriptions and delegated down to the prompts
     PressedEnter,
+    ScrollSnap,
+    Nop,
 }
 
 impl Application for Stechuhr {
@@ -171,6 +185,9 @@ impl Application for Stechuhr {
     fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
         let staff = stechuhr::load_staff(&connection);
         let management = ManagementTab::new(&staff);
+        // log should follow new events by default
+        let mut log_scroll = scrollable::State::default();
+        log_scroll.snap_to(1.0);
 
         (
             Self {
@@ -181,6 +198,7 @@ impl Application for Stechuhr {
                     connection: connection,
                     prompt_modal_state: modal::State::default(),
                 },
+                log_scroll,
                 active_tab: StechuhrTab::Timetrack,
                 should_exit: false,
                 timetrack: TimetrackTab::new(),
@@ -195,7 +213,7 @@ impl Application for Stechuhr {
         String::from("Stechuhr")
     }
 
-    fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
+    fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Tick(local_time) => {
                 if local_time > self.shared.current_time {
@@ -248,6 +266,10 @@ impl Application for Stechuhr {
                     }
                 }
             }
+            Message::ScrollSnap => {
+                self.log_scroll.snap_to(1.0);
+            }
+            Message::Nop => {}
         };
         Command::none()
     }
@@ -261,7 +283,7 @@ impl Application for Stechuhr {
         //     .tab_bar_theme
         //     .unwrap_or_default();
 
-        let logview = Container::new(self.get_logview())
+        let logview = Container::new(Stechuhr::get_logview(&mut self.log_scroll, &self.shared))
             .padding(TAB_PADDING)
             .width(Length::Fill)
             .height(Length::FillPortion(20));
@@ -303,8 +325,8 @@ impl Application for Stechuhr {
         .on_esc(Message::ExitPrompt);
 
         let element: Element<'_, Self::Message> = modal.into();
-        element.explain(Color::BLACK)
-        // element
+        // element.explain(Color::BLACK)
+        element
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -345,7 +367,7 @@ trait Tab {
             .width(Length::Fill)
             .height(Length::Fill)
             .center_x()
-            .align_y(Align::Start);
+            .align_y(Vertical::Top);
 
         Column::new().push(title).push(content).into()
     }

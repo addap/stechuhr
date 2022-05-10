@@ -104,6 +104,7 @@ impl fmt::Display for WorkEvent {
 
 #[derive(Debug, Clone, AsExpression)]
 pub struct WorkEventT {
+    #[allow(unused)]
     id: i32,
     pub created_at: NaiveDateTime,
     pub event: WorkEvent,

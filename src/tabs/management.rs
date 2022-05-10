@@ -2,8 +2,8 @@
 use std::{error, fmt, mem};
 
 use iced::{
-    button, text_input, Align, Button, Column, Container, Element, HorizontalAlignment, Length,
-    Row, Space, Text, TextInput,
+    alignment::Horizontal, button, text_input, Alignment, Button, Column, Container, Element,
+    Length, Row, Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
@@ -18,6 +18,7 @@ struct StaffMemberState {
     cardid_state: text_input::State,
     cardid_value: String,
     submit_state: button::State,
+    #[allow(unused)]
     delete_state: button::State,
 }
 
@@ -248,7 +249,7 @@ impl ManagementTab {
 }
 
 impl ManagementTab {
-    fn internal_view(&mut self, shared: &mut SharedData) -> Element<'_, ManagementMessage> {
+    fn internal_view(&mut self) -> Element<'_, ManagementMessage> {
         const SPACING: u16 = 100;
         let mut staff_edit = Column::new().padding(20);
 
@@ -284,7 +285,7 @@ impl ManagementTab {
                 .push(
                     Button::new(
                         &mut member_state.submit_state,
-                        Text::new("Speichern").horizontal_alignment(HorizontalAlignment::Center),
+                        Text::new("Speichern").horizontal_alignment(Horizontal::Center),
                     )
                     .on_press(ManagementMessage::SubmitRow(idx))
                     .width(Length::FillPortion(1)),
@@ -326,7 +327,7 @@ impl ManagementTab {
                 .push(
                     Button::new(
                         &mut self.new_submit_state,
-                        Text::new("Speichern").horizontal_alignment(HorizontalAlignment::Center),
+                        Text::new("Speichern").horizontal_alignment(Horizontal::Center),
                     )
                     .on_press(ManagementMessage::SubmitNewRow)
                     .width(Length::FillPortion(1)),
@@ -337,7 +338,7 @@ impl ManagementTab {
 
         let event_over = Button::new(
             &mut self.end_party_button_state,
-            Text::new("Event beenden").horizontal_alignment(HorizontalAlignment::Center),
+            Text::new("Event beenden").horizontal_alignment(Horizontal::Center),
         )
         .on_press(ManagementMessage::EndEvent);
 
@@ -345,7 +346,7 @@ impl ManagementTab {
             .push(staff_edit)
             .push(event_over)
             .spacing(SPACING)
-            .align_items(Align::Center);
+            .align_items(Alignment::Center);
         content.into()
     }
 
@@ -375,14 +376,13 @@ impl ManagementTab {
             .push(
                 Button::new(
                     &mut self.whoami_button_state,
-                    Text::new("Wem gehört dieser Dongle?")
-                        .horizontal_alignment(HorizontalAlignment::Center),
+                    Text::new("Wem gehört dieser Dongle?").horizontal_alignment(Horizontal::Center),
                 )
                 .on_press(ManagementMessage::Whoami),
             )
             // .padding(100)
             .spacing(100)
-            .align_items(Align::Center);
+            .align_items(Alignment::Center);
 
         let whoami_modal = Modal::new(&mut self.whoami_modal_state, content, move |state| {
             Card::new(Text::new("Dongle Abfrage"), {
@@ -422,7 +422,7 @@ impl Tab for ManagementTab {
         let content: Element<'_, ManagementMessage> = if self.authorized {
             self.admin_password_state.unfocus();
 
-            self.internal_view(shared)
+            self.internal_view()
         } else {
             /* Normally the textinput must be focussed.
              * But when the modal is open, we must unfocus, else it will capture an 'enter' press meant to close the modal that should be handled in the subcriptions in main.rs */

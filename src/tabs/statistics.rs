@@ -15,7 +15,7 @@ mod time_eval;
 use std::{error, fmt};
 
 use chrono::{Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
-use iced::{button, Align, Button, Column, Container, Element, Length, Row, Text};
+use iced::{button, Alignment, Button, Column, Container, Element, Length, Row, Text};
 use iced_aw::{
     date_picker::{self, DatePicker},
     TabLabel,
@@ -222,7 +222,7 @@ impl Tab for StatsTab {
                 .center_x()
                 .center_y(),
             )
-            .align_items(Align::Center);
+            .align_items(Alignment::Center);
 
         let content: Element<'_, StatsMessage> =
             Container::new(content).padding(TAB_PADDING).into();

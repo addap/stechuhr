@@ -2,8 +2,8 @@ use std::cmp::min;
 
 use chrono::Locale;
 use iced::{
-    button, text_input, Align, Button, Column, Container, Element, HorizontalAlignment, Image,
-    Length, Row, Space, Text, TextInput,
+    alignment::Horizontal, button, text_input, Alignment, Button, Column, Container, Element,
+    Image, Length, Row, Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
@@ -60,20 +60,19 @@ impl TimetrackTab {
         }
     }
 
-    fn get_staff_column(
-        staff: &[StaffMember],
-    ) -> (
-        Column<'static, TimetrackMessage>,
-        Column<'static, TimetrackMessage>,
-    ) {
+    /// Generate a column of names and icons signalling their work status.
+    /// Have to annotate return type as 'static, else it takes the argument's lifetime
+    fn get_staff_column(staff: &[StaffMember]) -> Element<'static, TimetrackMessage> {
         let names = Column::new()
-            .width(Length::FillPortion(5))
-            .align_items(Align::End);
+            .width(Length::Fill)
+            .spacing(10)
+            .align_items(Alignment::End);
         let icons = Column::new()
-            .width(Length::FillPortion(1))
-            .align_items(Align::Start);
+            .width(Length::Fill)
+            .spacing(10)
+            .align_items(Alignment::Start);
 
-        let column = staff
+        let (names, icons) = staff
             .iter()
             .fold((names, icons), |(names, icons), staff_member| {
                 let img = Image::new(staff_member.status.to_emoji())
@@ -92,9 +91,16 @@ impl TimetrackTab {
                 )
             });
 
-        column
+        Row::new()
+            .push(names)
+            .push(icons)
+            .width(Length::FillPortion(6))
+            .spacing(10)
+            .into()
     }
 
+    /// Generate the timetrack dashboard composed of columns of names and icons signalling their work status.
+    /// Have to annotate return type as 'static, else it takes the argument's lifetime
     fn get_staff_view(staff: &[StaffMember]) -> Container<'static, TimetrackMessage> {
         const COLUMNS: usize = 3;
         let column_size = staff.len() / COLUMNS;
@@ -103,7 +109,7 @@ impl TimetrackTab {
         let padding1 = Space::new(Length::FillPortion(5), Length::Fill);
         let padding2 = Space::new(Length::FillPortion(5), Length::Fill);
 
-        let mut staff_view = Row::new().spacing(20).push(padding1);
+        let mut staff_view = Row::new().spacing(100).push(padding1);
         let mut start = 0;
 
         for _ in 0..COLUMNS {
@@ -116,8 +122,8 @@ impl TimetrackTab {
                     0
                 };
             let end = min(staff.len(), end);
-            let (names, icons) = TimetrackTab::get_staff_column(&staff[start..end]);
-            staff_view = staff_view.push(names).push(icons);
+            let staff_column = TimetrackTab::get_staff_column(&staff[start..end]);
+            staff_view = staff_view.push(staff_column);
 
             start = end;
         }
@@ -154,7 +160,7 @@ impl Tab for TimetrackTab {
                 .format_localized("%A, %e. %B - %T", Locale::de_DE)
                 .to_string(),
         )
-        .horizontal_alignment(HorizontalAlignment::Center)
+        .horizontal_alignment(Horizontal::Center)
         .size(TEXT_SIZE_BIG);
 
         let staff_view = TimetrackTab::get_staff_view(&shared.staff);
@@ -170,7 +176,7 @@ impl Tab for TimetrackTab {
         .width(Length::Units(300));
 
         let content = Column::new()
-            .align_items(Align::Center)
+            .align_items(Alignment::Center)
             .width(Length::Fill)
             .padding(TAB_PADDING)
             .spacing(10)
@@ -203,7 +209,7 @@ impl Tab for TimetrackTab {
                     .push(
                         Button::new(
                             &mut state.confirm_state,
-                            Text::new("Ok").horizontal_alignment(HorizontalAlignment::Center),
+                            Text::new("Ok").horizontal_alignment(Horizontal::Center),
                         )
                         .width(Length::Shrink)
                         .on_press(TimetrackMessage::ConfirmSubmitBreakInput),
@@ -211,7 +217,7 @@ impl Tab for TimetrackTab {
                     .push(
                         Button::new(
                             &mut state.cancel_state,
-                            Text::new("Zurück").horizontal_alignment(HorizontalAlignment::Center),
+                            Text::new("Zurück").horizontal_alignment(Horizontal::Center),
                         )
                         .width(Length::Shrink)
                         .on_press(TimetrackMessage::CancelSubmitBreakInput),
