@@ -128,7 +128,7 @@ impl StaffState {
         staff_member.cardid.clone_from(cardid);
 
         // save in db
-        stechuhr::update_staff_member(staff_member, &shared.connection)?;
+        stechuhr::save_staff_member(staff_member, &shared.connection)?;
 
         let success_message = format!("Mitarbeiter {} erfolgreich geändert.", name);
         shared.log_info(success_message);

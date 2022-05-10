@@ -3,8 +3,7 @@ CREATE TABLE staff (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     pin CHAR(4) NOT NULL UNIQUE,
-    cardid CHAR(6) NOT NULL UNIQUE,
-    status BOOLEAN NOT NULL DEFAULT FALSE
+    cardid CHAR(6) NOT NULL UNIQUE
 );
 
 -- Create table for events

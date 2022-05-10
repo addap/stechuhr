@@ -115,7 +115,7 @@ impl StatsTab {
                 .to_string()
         ));
 
-        let events = stechuhr::load_events(start_time, end_time, &shared.connection);
+        let events = stechuhr::load_events_between(start_time, end_time, &shared.connection);
 
         let staff_hours: Vec<PersonHours> = shared
             .staff

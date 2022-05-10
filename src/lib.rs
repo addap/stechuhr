@@ -6,7 +6,10 @@ pub mod schema;
 extern crate diesel;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use models::{NewStaffMember, NewWorkEventT, PasswordHash, StaffMember, WorkEventT};
+use models::{
+    LoadStaffMember, NewStaffMember, NewWorkEventT, PasswordHash, StaffMember, WorkEventT,
+    WorkStatus,
+};
 use pbkdf2::{password_hash::PasswordVerifier, Pbkdf2};
 use std::env;
 
@@ -16,29 +19,83 @@ pub fn establish_connection() -> SqliteConnection {
         .expect(&format!("Error connecting to {}", database_url))
 }
 
-pub fn load_staff(connection: &SqliteConnection) -> Vec<StaffMember> {
+///*************************/
+/// Loading
+///*************************/
+
+/// Load a staff member from the database.
+fn load_staff(connection: &SqliteConnection) -> Vec<LoadStaffMember> {
     use schema::staff::dsl::*;
     staff
-        .load::<StaffMember>(connection)
+        .load::<LoadStaffMember>(connection)
         .expect("Error loading staff from DB")
 }
 
-pub fn update_staff_member(
+/// Load all events from the database.
+fn load_events(connection: &SqliteConnection) -> Vec<WorkEventT> {
+    use schema::events::dsl::*;
+
+    let evts = events
+        .order_by(created_at.asc())
+        .load::<WorkEventT>(connection)
+        .expect("Error loading events");
+
+    evts
+}
+
+/// Load all events in the specified range from the database.
+pub fn load_events_between(
+    start_time: NaiveDateTime,
+    end_time: NaiveDateTime,
+    connection: &SqliteConnection,
+) -> Vec<WorkEventT> {
+    use schema::events::dsl::*;
+
+    let evts = events
+        .filter(created_at.ge(start_time))
+        .filter(created_at.lt(end_time))
+        .order_by(created_at.asc())
+        .load::<WorkEventT>(connection)
+        .expect("Error loading events");
+
+    evts
+}
+
+pub fn load_state(connection: &SqliteConnection) -> Vec<StaffMember> {
+    let loaded_staff = load_staff(connection);
+    let events = load_events(connection);
+    let staff = staff_compute_status(loaded_staff, &events);
+
+    staff
+}
+
+///*************************/
+/// Saving
+///*************************/
+
+/// Save a single staff member into the database.
+pub fn save_staff_member(
     staff_member: &StaffMember,
     connection: &SqliteConnection,
 ) -> QueryResult<()> {
-    diesel::update(staff_member)
-        .set(staff_member)
+    let staff_member = LoadStaffMember::from(staff_member);
+
+    diesel::update(&staff_member)
+        .set(&staff_member)
         .execute(connection)?;
     Ok(())
 }
 
-pub fn update_staff(staff_v: &[StaffMember], connection: &SqliteConnection) -> QueryResult<()> {
+pub fn save_staff(staff_v: &[StaffMember], connection: &SqliteConnection) -> QueryResult<()> {
     for staff_member in staff_v {
-        update_staff_member(staff_member, connection)?;
+        save_staff_member(staff_member, connection)?;
     }
     Ok(())
 }
+
+///*************************/
+/// Inserting
+///*************************/
 
 pub fn insert_staff(
     staff_member: NewStaffMember,
@@ -54,11 +111,11 @@ pub fn insert_staff(
     let mut newly_inserted = staff
         .order_by(id.desc())
         .limit(1)
-        .load::<StaffMember>(connection)?;
+        .load::<LoadStaffMember>(connection)?;
 
     let newly_inserted = newly_inserted.remove(0);
 
-    Ok(newly_inserted)
+    Ok(newly_inserted.with_status(WorkStatus::Away))
 }
 
 pub fn insert_event(new_event: &NewWorkEventT, connection: &SqliteConnection) -> WorkEventT {
@@ -80,24 +137,7 @@ pub fn insert_event(new_event: &NewWorkEventT, connection: &SqliteConnection) ->
     newly_inserted
 }
 
-pub fn load_events(
-    start_time: NaiveDateTime,
-    end_time: NaiveDateTime,
-    connection: &SqliteConnection,
-) -> Vec<WorkEventT> {
-    use schema::events::dsl::*;
-
-    let evts = events
-        .filter(created_at.ge(start_time))
-        .filter(created_at.lt(end_time))
-        .order_by(created_at.asc())
-        .load::<WorkEventT>(connection)
-        .expect("Error loading events");
-
-    evts
-}
-
-pub fn save_password(new_password: PasswordHash, connection: &SqliteConnection) {
+pub fn insert_password(new_password: PasswordHash, connection: &SqliteConnection) {
     use schema::passwords::dsl::*;
 
     diesel::insert_into(passwords)
@@ -105,6 +145,10 @@ pub fn save_password(new_password: PasswordHash, connection: &SqliteConnection) 
         .execute(connection)
         .expect("Error inserting new pasword");
 }
+
+///*************************/
+/// Other Queries
+///*************************/
 
 pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
     use schema::passwords::dsl::*;
@@ -123,4 +167,25 @@ pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
     }
 
     return false;
+}
+
+fn staff_compute_status(staff: Vec<LoadStaffMember>, events: &[WorkEventT]) -> Vec<StaffMember> {
+    staff
+        .into_iter()
+        .map(|staff_member| {
+            for eventt in events.iter().rev() {
+                match eventt.event {
+                    models::WorkEvent::StatusChange(id, _, status) if id == staff_member.uuid() => {
+                        return staff_member.with_status(status);
+                    }
+                    models::WorkEvent::EventOver => {
+                        return staff_member.with_status(WorkStatus::Away);
+                    }
+                    _ => {}
+                }
+            }
+
+            return staff_member.with_status(WorkStatus::Away);
+        })
+        .collect()
 }

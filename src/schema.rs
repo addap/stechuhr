@@ -19,7 +19,6 @@ table! {
         name -> Text,
         pin -> Text,
         cardid -> Text,
-        status -> Bool,
     }
 }
 

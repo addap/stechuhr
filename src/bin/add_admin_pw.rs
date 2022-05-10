@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("{}", password_hash);
 
     let connection = stechuhr::establish_connection();
-    stechuhr::save_password(PasswordHash::new(password_hash), &connection);
+    stechuhr::insert_password(PasswordHash::new(password_hash), &connection);
 
     // Verify password against PHC string
     // let parsed_hash = PasswordHash::new(&password_hash)?;

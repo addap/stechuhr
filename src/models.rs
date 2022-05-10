@@ -8,6 +8,7 @@ use pbkdf2::password_hash::PasswordHash as PBKDF2Hash;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_lexpr;
+use std::borrow::Borrow;
 use std::str::FromStr;
 use std::{error, fmt, io};
 
@@ -168,12 +169,55 @@ impl FromStr for Cardid {
 #[derive(Debug, Clone, AsExpression, AsChangeset, Identifiable)]
 #[table_name = "staff"]
 #[primary_key(uuid)]
+pub struct LoadStaffMember {
+    uuid: i32,
+    name: String,
+    pin: String,
+    cardid: String,
+}
+
+impl LoadStaffMember {
+    pub fn uuid(&self) -> i32 {
+        self.uuid
+    }
+
+    pub fn with_status(self, status: WorkStatus) -> StaffMember {
+        StaffMember {
+            uuid: self.uuid,
+            name: self.name,
+            pin: self.pin,
+            cardid: self.cardid,
+            status,
+        }
+    }
+}
+
+/// The actual staff member that is used in the program.
+/// status is computed based on the work events
 pub struct StaffMember {
     uuid: i32,
     pub name: String,
     pub pin: String,
     pub cardid: String,
     pub status: WorkStatus,
+}
+
+// TODO for persist_staff_member I need a LoadStaffMember so I have to convert the &StaffMember to an owned value, which is uneccessary.
+// How can I implement AsChangeset for StaffMember directly?
+impl<T> From<T> for LoadStaffMember
+where
+    T: Borrow<StaffMember>,
+{
+    fn from(staff_member: T) -> Self {
+        let staff_member = staff_member.borrow();
+
+        Self {
+            uuid: staff_member.uuid.to_owned(),
+            name: staff_member.name.to_owned(),
+            pin: staff_member.pin.to_owned(),
+            cardid: staff_member.cardid.to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Insertable)]
@@ -277,23 +321,21 @@ impl PasswordHash {
 // type DB = diesel::sqlite::Sqlite;
 use diesel::backend::Backend;
 
-impl<DB> Queryable<staff::SqlType, DB> for StaffMember
+impl<DB> Queryable<staff::SqlType, DB> for LoadStaffMember
 where
     DB: Backend,
     bool: FromSql<Bool, DB>,
     String: FromSql<Text, DB>,
     i32: FromSql<Integer, DB>,
-    WorkStatus: FromSql<Bool, DB>,
 {
-    type Row = (i32, String, String, String, WorkStatus);
+    type Row = (i32, String, String, String);
 
     fn build(row: Self::Row) -> Self {
-        StaffMember {
+        Self {
             uuid: row.0,
             name: row.1,
             pin: row.2,
             cardid: row.3,
-            status: row.4,
         }
     }
 }

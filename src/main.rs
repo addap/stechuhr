@@ -190,7 +190,7 @@ impl Application for Stechuhr {
     }
 
     fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
-        let staff = stechuhr::load_staff(&connection);
+        let staff = stechuhr::load_state(&connection);
         let management = ManagementTab::new(&staff);
         // log should follow new events by default
         let mut log_scroll = scrollable::State::default();
@@ -239,7 +239,7 @@ impl Application for Stechuhr {
                         "Es sind noch Personen am Arbeiten. Bitte zuerst alle auf \"Pause\" stellen oder das Event beenden.",
                     ));
                 } else {
-                    match stechuhr::update_staff(&self.shared.staff, &self.shared.connection) {
+                    match stechuhr::save_staff(&self.shared.staff, &self.shared.connection) {
                         Ok(()) => self.should_exit = true,
                         Err(e) => self.shared.handle_result(Err(StechuhrError::Diesel(e))),
                     }
