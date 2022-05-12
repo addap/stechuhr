@@ -64,11 +64,11 @@ impl TimetrackTab {
     /// Have to annotate return type as 'static, else it takes the argument's lifetime
     fn get_staff_column(staff: &[StaffMember]) -> Element<'static, TimetrackMessage> {
         let names = Column::new()
-            .width(Length::Fill)
+            .width(Length::FillPortion(80))
             .spacing(10)
             .align_items(Alignment::End);
         let icons = Column::new()
-            .width(Length::Fill)
+            .width(Length::FillPortion(20))
             .spacing(10)
             .align_items(Alignment::Start);
 
@@ -94,7 +94,7 @@ impl TimetrackTab {
         Row::new()
             .push(names)
             .push(icons)
-            .width(Length::FillPortion(6))
+            .width(Length::FillPortion(10))
             .spacing(10)
             .into()
     }
@@ -106,10 +106,10 @@ impl TimetrackTab {
         let column_size = staff.len() / COLUMNS;
         let mut extra = staff.len() % COLUMNS;
 
-        let padding1 = Space::new(Length::FillPortion(5), Length::Fill);
-        let padding2 = Space::new(Length::FillPortion(5), Length::Fill);
+        let padding1 = Space::new(Length::Shrink, Length::Fill);
+        let padding2 = Space::new(Length::Shrink, Length::Fill);
 
-        let mut staff_view = Row::new().spacing(100).push(padding1);
+        let mut staff_view = Row::new().spacing(50).push(padding1);
         let mut start = 0;
 
         for _ in 0..COLUMNS {
