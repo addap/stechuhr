@@ -3,7 +3,6 @@ use chrono::{Local, NaiveDateTime};
 use diesel::deserialize::{self, FromSql, Queryable};
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::*;
-use lazy_static::lazy_static;
 use pbkdf2::password_hash::PasswordHash as PBKDF2Hash;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -61,6 +60,13 @@ impl WorkStatus {
         match self {
             WorkStatus::Away => "resources/cross-mark.png",
             WorkStatus::Working => "resources/check-mark.png",
+        }
+    }
+
+    pub fn to_unicode(&self) -> &'static str {
+        match self {
+            WorkStatus::Away => "❌",
+            WorkStatus::Working => "✅",
         }
     }
 }
@@ -134,9 +140,7 @@ impl FromStr for PIN {
     type Err = ModelError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"^\d{4}$").unwrap();
-        }
+        let RE = Regex::new(r"^\d{4}$").unwrap();
         if RE.is_match(s) {
             Ok(PIN)
         } else {
@@ -151,9 +155,7 @@ impl FromStr for Cardid {
     type Err = ModelError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"^\d{10}$").unwrap();
-        }
+        let RE = Regex::new(r"^\d{10}$").unwrap();
         if RE.is_match(s) {
             Ok(Cardid)
         } else {
