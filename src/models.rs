@@ -140,8 +140,8 @@ impl FromStr for PIN {
     type Err = ModelError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let RE = Regex::new(r"^\d{4}$").unwrap();
-        if RE.is_match(s) {
+        let re = Regex::new(r"^\d{4}$").unwrap();
+        if re.is_match(s) {
             Ok(PIN)
         } else {
             Err(ModelError::ParsePIN(s.to_owned()))
@@ -155,8 +155,8 @@ impl FromStr for Cardid {
     type Err = ModelError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let RE = Regex::new(r"^\d{10}$").unwrap();
-        if RE.is_match(s) {
+        let re = Regex::new(r"^\d{10}$").unwrap();
+        if re.is_match(s) {
             Ok(Cardid)
         } else {
             Err(ModelError::ParseCardid(s.to_owned()))
