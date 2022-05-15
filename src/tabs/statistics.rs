@@ -147,9 +147,9 @@ impl StatsTab {
             .collect();
 
         let filename = format!(
-            "{}.csv",
+            "./auswertung/{}.csv",
             self.date
-                .format_localized("%B-%Y", Locale::de_DE)
+                .format_localized("%Y-%m %B", Locale::de_DE)
                 .to_string()
         );
         let mut wtr = csv::Writer::from_path(&filename)?;

@@ -5,3 +5,4 @@
 ./target/debug/add_admin_pw
 ./target/release/add_admin_pw
 ./bootstrap.sh
+./stechuhr.desktop

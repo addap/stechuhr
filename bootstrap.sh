@@ -8,6 +8,7 @@ fi
 
 cat migrations/**/up.sql | sqlite3 stechuhr.sqlite3
 
+mkdir -p auswertung
 
 cat > .env << EOF
 DATABASE_URL="./stechuhr.sqlite3"
