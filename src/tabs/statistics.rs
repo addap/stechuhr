@@ -20,6 +20,7 @@ use iced_aw::{
     date_picker::{self, DatePicker},
     TabLabel,
 };
+use iced_native::Event;
 use stechuhr::date_ext::NaiveDateExt;
 
 use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING, TEXT_SIZE_BIG};
@@ -39,6 +40,7 @@ pub enum StatsMessage {
     CancelDate,
     SubmitDate(date_picker::Date),
     Generate,
+    HandleEvent(Event),
 }
 
 #[derive(Debug, Serialize)]
@@ -253,6 +255,8 @@ impl Tab for StatsTab {
                 Ok(())
             }
             StatsMessage::Generate => self.generate_csv(shared),
+            // fallthrough to ignore events
+            StatsMessage::HandleEvent(_) => Ok(()),
         }
     }
 }

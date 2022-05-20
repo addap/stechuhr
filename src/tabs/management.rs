@@ -3,12 +3,13 @@ use std::{error, fmt, mem};
 
 use iced::{
     alignment::{Horizontal, Vertical},
-    button,
+    button, keyboard,
     scrollable::{self},
     text_input, Alignment, Button, Checkbox, Column, Container, Element, Length, Row, Scrollable,
     Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
+use iced_native::Event;
 use stechuhr::{
     icons::{eye_unicode, ICONS, TEXT_SIZE_EMOJI},
     models::*,
@@ -244,6 +245,8 @@ pub enum ManagementMessage {
     ChangeNewRow(Option<String>, Option<String>, Option<String>),
     SubmitNewRow,
     EndEvent,
+    GenericSubmit,
+    HandleEvent(Event),
 }
 
 impl ManagementTab {
@@ -279,9 +282,40 @@ impl ManagementTab {
             end_party_button_state: button::State::default(),
         }
     }
+
+    fn submit_new_row(&mut self, shared: &mut SharedData) -> Result<(), StechuhrError> {
+        self.staff_state.submit_new_row(
+            shared,
+            self.new_name_value.clone(),
+            self.new_pin_value.clone(),
+            self.new_cardid_value.clone(),
+        )?;
+
+        self.new_name_value.clear();
+        self.new_pin_value.clear();
+        self.new_cardid_value.clear();
+
+        self.staff_scroll_state.snap_to(1.0);
+
+        Ok(())
+    }
 }
 
 impl ManagementTab {
+    fn text_input<'a, F>(
+        state: &'a mut text_input::State,
+        placeholder: &str,
+        value: &str,
+        f: F,
+    ) -> TextInput<'a, ManagementMessage>
+    where
+        F: 'a + Fn(String) -> ManagementMessage,
+    {
+        TextInput::new(state, placeholder, value, f)
+            .on_submit(ManagementMessage::GenericSubmit)
+            .width(Length::FillPortion(3))
+    }
+
     fn internal_view(&mut self) -> Element<'_, ManagementMessage> {
         const SPACING: u16 = 100;
         let mut staff_edit = Scrollable::new(&mut self.staff_scroll_state);
@@ -289,7 +323,7 @@ impl ManagementTab {
         for (idx, member_state) in self.staff_state.member_states.iter_mut().enumerate() {
             let staff_row = Row::new()
                 .push(
-                    TextInput::new(
+                    ManagementTab::text_input(
                         &mut member_state.name_state,
                         "Name eingeben",
                         &member_state.name_value.clone(),
@@ -298,7 +332,7 @@ impl ManagementTab {
                     .width(Length::FillPortion(3)),
                 )
                 .push(
-                    TextInput::new(
+                    ManagementTab::text_input(
                         &mut member_state.pin_state,
                         "PIN eingeben",
                         &member_state.pin_value.clone(),
@@ -307,7 +341,7 @@ impl ManagementTab {
                     .width(Length::FillPortion(3)),
                 )
                 .push(
-                    TextInput::new(
+                    ManagementTab::text_input(
                         &mut member_state.cardid_state,
                         "click & swipe RFID dongle",
                         &member_state.cardid_value.clone(),
@@ -339,7 +373,7 @@ impl ManagementTab {
         {
             let new_row = Row::new()
                 .push(
-                    TextInput::new(
+                    ManagementTab::text_input(
                         &mut self.new_name_state,
                         "Name eingeben",
                         &self.new_name_value,
@@ -348,7 +382,7 @@ impl ManagementTab {
                     .width(Length::FillPortion(3)),
                 )
                 .push(
-                    TextInput::new(
+                    ManagementTab::text_input(
                         &mut self.new_pin_state,
                         "PIN eingeben",
                         &self.new_pin_value,
@@ -357,7 +391,7 @@ impl ManagementTab {
                     .width(Length::FillPortion(3)),
                 )
                 .push(
-                    TextInput::new(
+                    ManagementTab::text_input(
                         &mut self.new_cardid_state,
                         "click & swipe RFID dongle",
                         &self.new_cardid_value,
@@ -459,6 +493,28 @@ impl ManagementTab {
 
         whoami_modal.into()
     }
+
+    fn collect_inputs(&mut self) -> (Option<usize>, Vec<&mut text_input::State>) {
+        let mut inputs = Vec::with_capacity(3 * (self.staff_state.member_states.len()));
+
+        for staff_member_state in &mut self.staff_state.member_states {
+            inputs.push(&mut staff_member_state.name_state);
+            inputs.push(&mut staff_member_state.pin_state);
+            inputs.push(&mut staff_member_state.cardid_state);
+        }
+
+        inputs.push(&mut self.new_name_state);
+        inputs.push(&mut self.new_pin_state);
+        inputs.push(&mut self.new_cardid_state);
+
+        let focus_idx =
+            inputs
+                .iter()
+                .enumerate()
+                .find_map(|(i, input)| if input.is_focused() { Some(i) } else { None });
+
+        (focus_idx, inputs)
+    }
 }
 
 impl Tab for ManagementTab {
@@ -473,6 +529,11 @@ impl Tab for ManagementTab {
     }
 
     fn content(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
+        let (_, inputs) = self.collect_inputs();
+        if shared.prompt_modal_state.is_shown() {
+            inputs.into_iter().for_each(|input| input.unfocus());
+        }
+
         let content: Element<'_, ManagementMessage> = if self.authorized {
             self.admin_password_state.unfocus();
 
@@ -543,18 +604,7 @@ impl Tab for ManagementTab {
                 }
             }
             ManagementMessage::SubmitNewRow => {
-                self.staff_state.submit_new_row(
-                    shared,
-                    self.new_name_value.clone(),
-                    self.new_pin_value.clone(),
-                    self.new_cardid_value.clone(),
-                )?;
-
-                self.new_name_value.clear();
-                self.new_pin_value.clear();
-                self.new_cardid_value.clear();
-
-                self.staff_scroll_state.snap_to(1.0);
+                self.submit_new_row(shared)?;
             }
             ManagementMessage::Whoami => {
                 self.whoami_modal_state.show(true);
@@ -605,6 +655,40 @@ impl Tab for ManagementTab {
                 }
                 shared.log_event(WorkEvent::EventOver);
             }
+            ManagementMessage::GenericSubmit => {
+                let (focus_idx, _) = self.collect_inputs();
+
+                if let Some(focus_idx) = focus_idx {
+                    let row_idx = focus_idx / 3;
+
+                    if row_idx == self.staff_state.member_states.len() {
+                        // we are in the last row so we submit
+                        self.submit_new_row(shared)?;
+                    } else {
+                        // one of the existing rows, so just save that
+                        self.staff_state.submit(shared, row_idx)?;
+                    }
+                }
+            }
+            // a.d. completely hacked together tab order since iced does not seem to provide it
+            ManagementMessage::HandleEvent(Event::Keyboard(keyboard::Event::KeyPressed {
+                key_code: keyboard::KeyCode::Tab,
+                modifiers,
+            })) => {
+                let (focus_idx, mut inputs) = self.collect_inputs();
+
+                if let Some(focus_idx) = focus_idx {
+                    let new_focus_idx = if modifiers.shift() {
+                        (focus_idx + inputs.len() - 1) % inputs.len()
+                    } else {
+                        (focus_idx + 1) % inputs.len()
+                    };
+                    inputs.get_mut(focus_idx).unwrap().unfocus();
+                    inputs.get_mut(new_focus_idx).unwrap().focus();
+                }
+            }
+            // fallthrough to ignore events
+            ManagementMessage::HandleEvent(_) => {}
         }
         Ok(())
     }

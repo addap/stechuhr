@@ -168,8 +168,7 @@ enum Message {
     Timetrack(TimetrackMessage),
     Management(ManagementMessage),
     Statistics(StatsMessage),
-    // sent in main subscriptions and delegated down to the prompts
-    PressedEnter,
+    HandleEvent(Event),
     ScrollSnap,
     Nop,
     ToggleFullscreen,
@@ -262,18 +261,23 @@ impl Application for Stechuhr {
             Message::Statistics(stats_message) => {
                 self.statistics.update(&mut self.shared, stats_message);
             }
-            Message::PressedEnter => {
-                if self.shared.prompt_modal_state.is_shown() {
-                    self.shared.prompt_modal_state.show(false);
-                } else {
-                    match StechuhrTab::from(self.active_tab) {
-                        StechuhrTab::Timetrack => self
-                            .timetrack
-                            .update(&mut self.shared, TimetrackMessage::ConfirmSubmitBreakInput),
-                        _ => {}
-                    }
-                }
+            Message::HandleEvent(Event::Keyboard(keyboard::Event::KeyPressed {
+                key_code: keyboard::KeyCode::Enter,
+                ..
+            })) if self.shared.prompt_modal_state.is_shown() => {
+                self.shared.prompt_modal_state.show(false)
             }
+            Message::HandleEvent(e) => match StechuhrTab::from(self.active_tab) {
+                StechuhrTab::Timetrack => self
+                    .timetrack
+                    .update(&mut self.shared, TimetrackMessage::HandleEvent(e)),
+                StechuhrTab::Management => self
+                    .management
+                    .update(&mut self.shared, ManagementMessage::HandleEvent(e)),
+                StechuhrTab::Statistics => self
+                    .statistics
+                    .update(&mut self.shared, StatsMessage::HandleEvent(e)),
+            },
             Message::ScrollSnap => {
                 self.log_scroll.snap_to(1.0);
             }
@@ -352,22 +356,15 @@ impl Application for Stechuhr {
                 (_, Event::Window(iced_native::window::Event::CloseRequested)) => {
                     Some(Message::ExitApplication)
                 }
-                /* event when pressing enter key. At the moment we only send it to the timetrack tab to confirm the submission modal.
-                 * we need to be careful to only handle events that have not been caputed elsewhere, otherwise we use the enter again which originally opened the submission modal */
                 (
                     Status::Ignored,
-                    Event::Keyboard(keyboard::Event::KeyPressed {
-                        key_code: keyboard::KeyCode::Enter,
-                        ..
-                    }),
-                ) => Some(Message::PressedEnter),
-                (
-                    _,
                     Event::Keyboard(keyboard::Event::KeyPressed {
                         key_code: keyboard::KeyCode::F11,
                         ..
                     }),
                 ) => Some(Message::ToggleFullscreen),
+                /* we need to be careful to only handle events that have not been caputed elsewhere, otherwise we use the enter again which originally opened the submission modal */
+                (Status::Ignored, e) => Some(Message::HandleEvent(e)),
                 (_, _) => None,
             }),
         ])

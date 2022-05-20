@@ -2,10 +2,11 @@ use std::cmp::min;
 
 use chrono::Locale;
 use iced::{
-    alignment::Horizontal, button, scrollable, text_input, Alignment, Button, Column, Container,
-    Element, Image, Length, Row, Scrollable, Space, Text, TextInput,
+    alignment::Horizontal, button, keyboard, scrollable, text_input, Alignment, Button, Column,
+    Container, Element, Image, Length, Row, Scrollable, Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
+use iced_native::Event;
 use stechuhr::models::*;
 
 use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING, TEXT_SIZE, TEXT_SIZE_BIG};
@@ -35,6 +36,7 @@ pub enum TimetrackMessage {
     SubmitBreakInput,
     ConfirmSubmitBreakInput,
     CancelSubmitBreakInput,
+    HandleEvent(Event),
 }
 
 impl TimetrackTab {
@@ -276,13 +278,19 @@ impl Tab for TimetrackTab {
                 }
             }
             TimetrackMessage::ConfirmSubmitBreakInput => {
-                self.handle_confirm_submit_break_input(shared);
+                self.handle_confirm_submit_break_input(shared)
             }
             TimetrackMessage::CancelSubmitBreakInput => {
                 self.break_modal_state.show(false);
                 self.break_input_uuid = None;
                 self.break_input_value.clear();
             }
+            TimetrackMessage::HandleEvent(Event::Keyboard(keyboard::Event::KeyPressed {
+                key_code: keyboard::KeyCode::Enter,
+                ..
+            })) => self.handle_confirm_submit_break_input(shared),
+            // fallthrough to ignore events
+            TimetrackMessage::HandleEvent(_) => {}
         }
         Ok(())
     }
