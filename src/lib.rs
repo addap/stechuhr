@@ -1,4 +1,5 @@
 pub mod date_ext;
+pub mod icons;
 pub mod models;
 pub mod schema;
 

@@ -176,6 +176,7 @@ pub struct LoadStaffMember {
     name: String,
     pin: String,
     cardid: String,
+    is_visible: bool,
 }
 
 impl LoadStaffMember {
@@ -189,6 +190,7 @@ impl LoadStaffMember {
             name: self.name,
             pin: self.pin,
             cardid: self.cardid,
+            is_visible: self.is_visible,
             status,
         }
     }
@@ -202,6 +204,7 @@ pub struct StaffMember {
     pub pin: String,
     pub cardid: String,
     pub status: WorkStatus,
+    pub is_visible: bool,
 }
 
 // TODO for persist_staff_member I need a LoadStaffMember so I have to convert the &StaffMember to an owned value, which is uneccessary.
@@ -218,6 +221,7 @@ where
             name: staff_member.name.to_owned(),
             pin: staff_member.pin.to_owned(),
             cardid: staff_member.cardid.to_owned(),
+            is_visible: staff_member.is_visible,
         }
     }
 }
@@ -330,7 +334,7 @@ where
     String: FromSql<Text, DB>,
     i32: FromSql<Integer, DB>,
 {
-    type Row = (i32, String, String, String);
+    type Row = (i32, String, String, String, bool);
 
     fn build(row: Self::Row) -> Self {
         Self {
@@ -338,6 +342,7 @@ where
             name: row.1,
             pin: row.2,
             cardid: row.3,
+            is_visible: row.4,
         }
     }
 }

@@ -19,6 +19,7 @@ table! {
         name -> Text,
         pin -> Text,
         cardid -> Text,
+        is_visible -> Bool,
     }
 }
 

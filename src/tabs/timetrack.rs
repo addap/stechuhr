@@ -2,8 +2,8 @@ use std::cmp::min;
 
 use chrono::Locale;
 use iced::{
-    alignment::Horizontal, button, text_input, Alignment, Button, Column, Container, Element,
-    Image, Length, Row, Space, Text, TextInput,
+    alignment::Horizontal, button, scrollable, text_input, Alignment, Button, Column, Container,
+    Element, Image, Length, Row, Scrollable, Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use stechuhr::models::*;
@@ -19,6 +19,8 @@ pub struct TimetrackTab {
     // widget states
     break_input_state: text_input::State,
     break_modal_state: modal::State<BreakModalState>,
+
+    staff_scroll_state: scrollable::State,
 }
 
 #[derive(Default)]
@@ -43,6 +45,7 @@ impl TimetrackTab {
             break_input_state: text_input::State::default(),
             // TODO why does State not take the type argument <BreakModalState> here?
             break_modal_state: modal::State::default(),
+            staff_scroll_state: scrollable::State::default(),
         }
     }
 
@@ -62,7 +65,7 @@ impl TimetrackTab {
 
     /// Generate a column of names and icons signalling their work status.
     /// Have to annotate return type as 'static, else it takes the argument's lifetime
-    fn get_staff_column(staff: &[StaffMember]) -> Element<'static, TimetrackMessage> {
+    fn get_staff_column(staff: &[&StaffMember]) -> Element<'static, TimetrackMessage> {
         let names = Column::new()
             .width(Length::FillPortion(80))
             .spacing(10)
@@ -102,12 +105,17 @@ impl TimetrackTab {
     /// Generate the timetrack dashboard composed of columns of names and icons signalling their work status.
     /// Have to annotate return type as 'static, else it takes the argument's lifetime
     fn get_staff_view(staff: &[StaffMember]) -> Container<'static, TimetrackMessage> {
+        let staff = staff
+            .iter()
+            .filter(|staff_member| staff_member.is_visible)
+            .collect::<Vec<_>>();
+
         const COLUMNS: usize = 3;
         let column_size = staff.len() / COLUMNS;
         let mut extra = staff.len() % COLUMNS;
 
-        let padding1 = Space::new(Length::Shrink, Length::Fill);
-        let padding2 = Space::new(Length::Shrink, Length::Fill);
+        let padding1 = Space::new(Length::Shrink, Length::Shrink);
+        let padding2 = Space::new(Length::Shrink, Length::Shrink);
 
         let mut staff_view = Row::new().spacing(50).push(padding1);
         let mut start = 0;
@@ -164,6 +172,8 @@ impl Tab for TimetrackTab {
         .size(TEXT_SIZE_BIG);
 
         let staff_view = TimetrackTab::get_staff_view(&shared.staff);
+        let staff_view =
+            Scrollable::new(&mut self.staff_scroll_state).push(staff_view.height(Length::Shrink));
 
         let dongle_input = TextInput::new(
             &mut self.break_input_state,

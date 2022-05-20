@@ -2,11 +2,17 @@
 use std::{error, fmt, mem};
 
 use iced::{
-    alignment::Horizontal, button, text_input, Alignment, Button, Column, Container, Element,
-    Length, Row, Space, Text, TextInput,
+    alignment::{Horizontal, Vertical},
+    button,
+    scrollable::{self},
+    text_input, Alignment, Button, Checkbox, Column, Container, Element, Length, Row, Scrollable,
+    Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
-use stechuhr::models::*;
+use stechuhr::{
+    icons::{eye_unicode, ICONS, TEXT_SIZE_EMOJI},
+    models::*,
+};
 
 use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING};
 
@@ -20,6 +26,8 @@ struct StaffMemberState {
     submit_state: button::State,
     #[allow(unused)]
     delete_state: button::State,
+
+    is_visible: bool,
 }
 
 impl StaffMemberState {
@@ -50,6 +58,7 @@ impl Default for StaffMemberState {
             cardid_value: String::default(),
             submit_state: button::State::default(),
             delete_state: button::State::default(),
+            is_visible: true,
         }
     }
 }
@@ -120,12 +129,14 @@ impl StaffState {
         let name = &state.name_value;
         let pin = &state.pin_value;
         let cardid = &state.cardid_value;
+        let is_visible = state.is_visible;
 
         // use same validation as in submit_new_row
         NewStaffMember::validate(name, pin, cardid)?;
         staff_member.name.clone_from(name);
         staff_member.pin.clone_from(pin);
         staff_member.cardid.clone_from(cardid);
+        staff_member.is_visible = is_visible;
 
         // save in db
         stechuhr::save_staff_member(staff_member, &shared.connection)?;
@@ -165,6 +176,22 @@ impl StaffState {
         Ok(())
     }
 
+    fn toggle_visible(
+        &mut self,
+        shared: &mut SharedData,
+        idx: usize,
+        is_visible: bool,
+    ) -> Result<(), StechuhrError> {
+        let state = self
+            .member_states
+            .get_mut(idx)
+            .ok_or(ManagementError::IndexError(idx))?;
+        state.is_visible = is_visible;
+
+        self.submit(shared, idx)?;
+        Ok(())
+    }
+
     // fn delete(&mut self, idx: usize) {
     //     self.states.remove(idx);
     //     self.staff.remove(idx);
@@ -179,6 +206,7 @@ pub struct ManagementTab {
     admin_password_value: String,
     admin_password_state: text_input::State,
     /* management of staff */
+    staff_scroll_state: scrollable::State,
     staff_state: StaffState,
     /* adding new staff */
     new_name_state: text_input::State,
@@ -211,6 +239,7 @@ pub enum ManagementMessage {
     ChangePIN(usize, String),
     ChangeCardID(usize, String),
     SubmitRow(usize),
+    ToggleVisible(usize, bool),
     // DeleteRow(usize),
     ChangeNewRow(Option<String>, Option<String>, Option<String>),
     SubmitNewRow,
@@ -227,6 +256,9 @@ impl ManagementTab {
     }
 
     pub fn new(staff: &[StaffMember]) -> Self {
+        let mut staff_scroll_state = scrollable::State::default();
+        staff_scroll_state.snap_to(1.0);
+
         ManagementTab {
             whoami_modal_state: modal::State::default(),
             whoami_button_state: button::State::default(),
@@ -234,6 +266,7 @@ impl ManagementTab {
             admin_password_value: String::from(""),
             admin_password_state: text_input::State::default(),
             staff_state: StaffState::from(staff),
+            staff_scroll_state,
 
             new_name_state: text_input::State::default(),
             new_name_value: String::from(""),
@@ -251,7 +284,7 @@ impl ManagementTab {
 impl ManagementTab {
     fn internal_view(&mut self) -> Element<'_, ManagementMessage> {
         const SPACING: u16 = 100;
-        let mut staff_edit = Column::new().padding(20);
+        let mut staff_edit = Scrollable::new(&mut self.staff_scroll_state);
 
         for (idx, member_state) in self.staff_state.member_states.iter_mut().enumerate() {
             let staff_row = Row::new()
@@ -283,12 +316,20 @@ impl ManagementTab {
                     .width(Length::FillPortion(3)),
                 )
                 .push(
+                    Checkbox::new(member_state.is_visible, eye_unicode(), move |b| {
+                        ManagementMessage::ToggleVisible(idx, b)
+                    })
+                    .font(ICONS)
+                    .text_size(TEXT_SIZE_EMOJI)
+                    .width(Length::FillPortion(1)),
+                )
+                .push(
                     Button::new(
                         &mut member_state.submit_state,
                         Text::new("Speichern").horizontal_alignment(Horizontal::Center),
                     )
                     .on_press(ManagementMessage::SubmitRow(idx))
-                    .width(Length::FillPortion(1)),
+                    .width(Length::FillPortion(2)),
                 )
                 .spacing(SPACING);
             staff_edit = staff_edit.push(staff_row);
@@ -324,13 +365,14 @@ impl ManagementTab {
                     )
                     .width(Length::FillPortion(3)),
                 )
+                .push(Space::new(Length::FillPortion(1), Length::Shrink))
                 .push(
                     Button::new(
                         &mut self.new_submit_state,
                         Text::new("Speichern").horizontal_alignment(Horizontal::Center),
                     )
                     .on_press(ManagementMessage::SubmitNewRow)
-                    .width(Length::FillPortion(1)),
+                    .width(Length::FillPortion(2)),
                 )
                 .spacing(SPACING);
             staff_edit = staff_edit.push(new_row);
@@ -343,9 +385,21 @@ impl ManagementTab {
         .on_press(ManagementMessage::EndEvent);
 
         let content = Column::new()
-            .push(staff_edit)
-            .push(event_over)
-            .spacing(SPACING)
+            .push(
+                Container::new(staff_edit)
+                    .width(Length::Fill)
+                    .height(Length::FillPortion(90))
+                    .center_x()
+                    .align_y(Vertical::Top),
+            )
+            .push(
+                Container::new(event_over)
+                    .width(Length::Fill)
+                    .height(Length::FillPortion(10))
+                    .center_x()
+                    .center_y(),
+            )
+            .spacing(20)
             .align_items(Alignment::Center);
         content.into()
     }
@@ -470,6 +524,9 @@ impl Tab for ManagementTab {
             ManagementMessage::SubmitRow(idx) => {
                 self.staff_state.submit(shared, idx)?;
             }
+            ManagementMessage::ToggleVisible(idx, b) => {
+                self.staff_state.toggle_visible(shared, idx, b)?
+            }
             // ManagementMessage::DeleteRow(idx) => {
             //     MemberRow::from(&mut shared.staff, &mut self.staff_states)
             //         .delete(idx)
@@ -496,6 +553,8 @@ impl Tab for ManagementTab {
                 self.new_name_value.clear();
                 self.new_pin_value.clear();
                 self.new_cardid_value.clear();
+
+                self.staff_scroll_state.snap_to(1.0);
             }
             ManagementMessage::Whoami => {
                 self.whoami_modal_state.show(true);
