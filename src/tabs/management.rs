@@ -3,15 +3,14 @@ use std::{error, fmt, mem};
 
 use iced::{
     alignment::{Horizontal, Vertical},
-    button, keyboard,
-    scrollable::{self},
-    text_input, Alignment, Button, Checkbox, Column, Container, Element, Length, Row, Scrollable,
-    Space, Text, TextInput,
+    button, keyboard, scrollable, text_input, Alignment, Button, Checkbox, Column, Container,
+    Element, Length, Row, Scrollable, Space, Text, TextInput,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use iced_native::Event;
 use stechuhr::{
-    icons::{eye_unicode, ICONS, TEXT_SIZE_EMOJI},
+    db,
+    icons::{self, TEXT_SIZE_EMOJI},
     models::*,
 };
 
@@ -146,7 +145,7 @@ impl StaffState {
         staff_member.is_visible = is_visible;
 
         // save in db
-        stechuhr::save_staff_member(staff_member, &shared.connection)?;
+        db::save_staff_member(staff_member, &shared.connection)?;
 
         let success_message = format!("Mitarbeiter {} erfolgreich geändert.", name);
         shared.log_info(success_message);
@@ -163,7 +162,7 @@ impl StaffState {
     ) -> Result<(), StechuhrError> {
         // save in DB
         let new_staff_member = NewStaffMember::new(new_name, new_pin, new_cardid)?;
-        let new_staff_member = stechuhr::insert_staff(new_staff_member, &shared.connection)?;
+        let new_staff_member = db::insert_staff(new_staff_member, &shared.connection)?;
 
         self.member_states.push(
             StaffMemberState::default()
@@ -179,6 +178,18 @@ impl StaffState {
         shared.log_info(success_message);
 
         shared.staff.push(new_staff_member);
+
+        Ok(())
+    }
+
+    fn delete_row(&mut self, shared: &mut SharedData, idx: usize) -> Result<(), StechuhrError> {
+        if idx >= self.member_states.len() {
+            return Err(ManagementError::IndexError(idx).into());
+        }
+        self.member_states.remove(idx);
+        let staff_member = shared.staff.remove(idx);
+
+        db::delete_staff_member(staff_member, &shared.connection)?;
 
         Ok(())
     }
@@ -224,6 +235,15 @@ pub struct ManagementTab {
     new_cardid_value: String,
     new_submit_state: button::State,
     end_party_button_state: button::State,
+
+    delete_modal_state: modal::State<DeleteModalState>,
+    delete_idx: Option<usize>,
+}
+
+#[derive(Default)]
+struct DeleteModalState {
+    delete_confirm_state: button::State,
+    delete_cancel_state: button::State,
 }
 
 #[derive(Debug, Default)]
@@ -247,7 +267,9 @@ pub enum ManagementMessage {
     ChangeCardID(usize, String),
     SubmitRow(usize),
     ToggleVisible(usize, bool),
-    // DeleteRow(usize),
+    DeleteRow(usize),
+    ConfirmDeleteRow,
+    CancelDeleteRow,
     ChangeNewRow(Option<String>, Option<String>, Option<String>),
     SubmitNewRow,
     EndEvent,
@@ -286,6 +308,9 @@ impl ManagementTab {
             new_submit_state: button::State::default(),
 
             end_party_button_state: button::State::default(),
+
+            delete_modal_state: modal::State::default(),
+            delete_idx: None,
         }
     }
 
@@ -322,9 +347,9 @@ impl ManagementTab {
             .width(Length::FillPortion(3))
     }
 
-    fn internal_view(&mut self) -> Element<'_, ManagementMessage> {
-        const SPACING: u16 = 100;
-        let mut staff_edit = Scrollable::new(&mut self.staff_scroll_state).padding(10);
+    fn internal_view(&mut self, shared: &mut SharedData) -> Element<'_, ManagementMessage> {
+        const SPACING: u16 = 1;
+        let mut staff_edit = Scrollable::new(&mut self.staff_scroll_state);
         let mut even = true;
 
         for (idx, member_state) in self.staff_state.member_states.iter_mut().enumerate() {
@@ -337,8 +362,9 @@ impl ManagementTab {
                             &member_state.name_value.clone(),
                             move |s| ManagementMessage::ChangeName(idx, s),
                         )
-                        .width(Length::FillPortion(3)),
+                        .width(Length::FillPortion(25)),
                     )
+                    .push(Space::new(Length::FillPortion(SPACING), Length::Shrink))
                     .push(
                         ManagementTab::text_input(
                             &mut member_state.pin_state,
@@ -346,34 +372,44 @@ impl ManagementTab {
                             &member_state.pin_value.clone(),
                             move |s| ManagementMessage::ChangePIN(idx, s),
                         )
-                        .width(Length::FillPortion(3)),
+                        .width(Length::FillPortion(25)),
                     )
+                    .push(Space::new(Length::FillPortion(SPACING), Length::Shrink))
                     .push(
                         ManagementTab::text_input(
                             &mut member_state.cardid_state,
-                            "click & swipe RFID dongle",
+                            "Dongle swipen",
                             &member_state.cardid_value.clone(),
                             move |s| ManagementMessage::ChangeCardID(idx, s),
                         )
-                        .width(Length::FillPortion(3)),
+                        .width(Length::FillPortion(25)),
                     )
+                    .push(Space::new(Length::FillPortion(5), Length::Shrink))
                     .push(
-                        Checkbox::new(member_state.is_visible, eye_unicode(), move |b| {
+                        Checkbox::new(member_state.is_visible, icons::emoji::eye, move |b| {
                             ManagementMessage::ToggleVisible(idx, b)
                         })
-                        .font(ICONS)
+                        .font(icons::ICON_FONT)
                         .text_size(TEXT_SIZE_EMOJI)
-                        .width(Length::FillPortion(1)),
+                        .width(Length::FillPortion(8)),
+                    )
+                    .push(
+                        Button::new(
+                            &mut member_state.delete_state,
+                            icons::icon(icons::emoji::trashcan),
+                        )
+                        .on_press(ManagementMessage::DeleteRow(idx))
+                        .width(Length::FillPortion(5)),
                     )
                     .push(
                         Button::new(
                             &mut member_state.submit_state,
-                            Text::new("Speichern").horizontal_alignment(Horizontal::Center),
+                            icons::icon(icons::emoji::floppydisk),
                         )
                         .on_press(ManagementMessage::SubmitRow(idx))
-                        .width(Length::FillPortion(2)),
+                        .width(Length::FillPortion(5)),
                     )
-                    .spacing(SPACING),
+                    .push(Space::new(Length::FillPortion(2), Length::Shrink)),
             )
             .style(stechuhr::style::management_row(&mut even));
             staff_edit = staff_edit.push(staff_row);
@@ -390,8 +426,9 @@ impl ManagementTab {
                             &self.new_name_value,
                             |s| ManagementMessage::ChangeNewRow(Some(s), None, None),
                         )
-                        .width(Length::FillPortion(3)),
+                        .width(Length::FillPortion(25)),
                     )
+                    .push(Space::new(Length::FillPortion(SPACING), Length::Shrink))
                     .push(
                         ManagementTab::text_input(
                             &mut self.new_pin_state,
@@ -399,8 +436,9 @@ impl ManagementTab {
                             &self.new_pin_value,
                             |s| ManagementMessage::ChangeNewRow(None, Some(s), None),
                         )
-                        .width(Length::FillPortion(3)),
+                        .width(Length::FillPortion(25)),
                     )
+                    .push(Space::new(Length::FillPortion(SPACING), Length::Shrink))
                     .push(
                         ManagementTab::text_input(
                             &mut self.new_cardid_state,
@@ -408,18 +446,19 @@ impl ManagementTab {
                             &self.new_cardid_value,
                             move |s| ManagementMessage::ChangeNewRow(None, None, Some(s)),
                         )
-                        .width(Length::FillPortion(3)),
+                        .width(Length::FillPortion(25)),
                     )
-                    .push(Space::new(Length::FillPortion(1), Length::Shrink))
+                    .push(Space::new(Length::FillPortion(5), Length::Shrink))
+                    .push(Space::new(Length::FillPortion(13), Length::Shrink))
                     .push(
                         Button::new(
                             &mut self.new_submit_state,
-                            Text::new("Speichern").horizontal_alignment(Horizontal::Center),
+                            icons::icon(icons::emoji::floppydisk),
                         )
                         .on_press(ManagementMessage::SubmitNewRow)
-                        .width(Length::FillPortion(2)),
+                        .width(Length::FillPortion(5)),
                     )
-                    .spacing(SPACING),
+                    .push(Space::new(Length::FillPortion(2), Length::Shrink)),
             )
             .style(stechuhr::style::management_row(&mut even));
             staff_edit = staff_edit.push(new_row);
@@ -448,7 +487,52 @@ impl ManagementTab {
             )
             .spacing(20)
             .align_items(Alignment::Center);
-        content.into()
+
+        let delete_modal_value = if let Some(delete_idx) = self.delete_idx {
+            if let Some(staff_member) = shared.staff.get(delete_idx) {
+                format!("{} wird gelöscht. Korrekt?", staff_member.name,)
+            } else {
+                String::from("Warnung: das solltest du nicht sehen. Bitte Adrian Bescheid geben.")
+            }
+        } else {
+            String::from("Warnung: das solltest du nicht sehen. Bitte Adrian Bescheid geben.")
+        };
+
+        let modal = Modal::new(&mut self.delete_modal_state, content, move |state| {
+            Card::new(
+                Text::new("Löschen eines Mitarbeiters"),
+                Text::new(&delete_modal_value),
+            )
+            .foot(
+                Row::new()
+                    .spacing(10)
+                    .padding(5)
+                    .width(Length::Fill)
+                    .push(
+                        Button::new(
+                            &mut state.delete_confirm_state,
+                            Text::new("Ok").horizontal_alignment(Horizontal::Center),
+                        )
+                        .width(Length::Shrink)
+                        .on_press(ManagementMessage::ConfirmDeleteRow),
+                    )
+                    .push(
+                        Button::new(
+                            &mut state.delete_cancel_state,
+                            Text::new("Zurück").horizontal_alignment(Horizontal::Center),
+                        )
+                        .width(Length::Shrink)
+                        .on_press(ManagementMessage::CancelDeleteRow),
+                    ),
+            )
+            .width(Length::Shrink)
+            .on_close(ManagementMessage::CancelDeleteRow)
+            .into()
+        })
+        .backdrop(ManagementMessage::CancelDeleteRow)
+        .on_esc(ManagementMessage::CancelDeleteRow);
+
+        modal.into()
     }
 
     fn public_view(&mut self, shared: &mut SharedData) -> Element<'_, ManagementMessage> {
@@ -550,7 +634,7 @@ impl Tab for ManagementTab {
         let content: Element<'_, ManagementMessage> = if self.authorized {
             self.admin_password_state.unfocus();
 
-            self.internal_view()
+            self.internal_view(shared)
         } else {
             /* Normally the textinput must be focussed.
              * But when the modal is open, we must unfocus, else it will capture an 'enter' press meant to close the modal that should be handled in the subcriptions in main.rs */
@@ -578,7 +662,7 @@ impl Tab for ManagementTab {
                 self.admin_password_value = password;
             }
             ManagementMessage::SubmitPassword => {
-                if stechuhr::verify_password(self.admin_password_value.trim(), &shared.connection) {
+                if db::verify_password(self.admin_password_value.trim(), &shared.connection) {
                     self.admin_password_value.clear();
                     self.auth();
                 } else {
@@ -599,12 +683,24 @@ impl Tab for ManagementTab {
                 self.staff_state.submit(shared, idx)?;
             }
             ManagementMessage::ToggleVisible(idx, b) => {
-                self.staff_state.toggle_visible(shared, idx, b)?
+                self.staff_state.toggle_visible(shared, idx, b)?;
             }
-            // ManagementMessage::DeleteRow(idx) => {
-            //     MemberRow::from(&mut shared.staff, &mut self.staff_states)
-            //         .delete(idx)
-            // }
+            ManagementMessage::DeleteRow(idx) => {
+                self.delete_idx = Some(idx);
+                self.delete_modal_state.show(true);
+            }
+            ManagementMessage::CancelDeleteRow => {
+                self.delete_idx = None;
+                self.delete_modal_state.show(false);
+            }
+            ManagementMessage::ConfirmDeleteRow => {
+                if let Some(delete_idx) = self.delete_idx {
+                    self.staff_state.delete_row(shared, delete_idx)?;
+
+                    self.delete_idx = None;
+                    self.delete_modal_state.show(false);
+                }
+            }
             ManagementMessage::ChangeNewRow(name, pin, cardid) => {
                 if let Some(name) = name {
                     self.new_name_value = name;

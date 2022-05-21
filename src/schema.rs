@@ -17,14 +17,11 @@ table! {
     staff (id) {
         id -> Integer,
         name -> Text,
-        pin -> Text,
-        cardid -> Text,
+        pin -> Nullable<Text>,
+        cardid -> Nullable<Text>,
         is_visible -> Bool,
+        is_active -> Bool,
     }
 }
 
-allow_tables_to_appear_in_same_query!(
-    events,
-    passwords,
-    staff,
-);
+allow_tables_to_appear_in_same_query!(events, passwords, staff,);

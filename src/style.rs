@@ -1,4 +1,4 @@
-use iced::{button, container, text_input, Background, Color, TextInput, Vector};
+use iced::{container, text_input, Color, TextInput};
 
 pub struct LogviewStyle;
 pub struct TabContentStyle;

@@ -23,8 +23,9 @@ use iced_aw::{
 use iced_native::Event;
 use stechuhr::date_ext::NaiveDateExt;
 
-use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING, TEXT_SIZE_BIG};
+use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING};
 use event_eval::EventSM;
+use stechuhr::{db, TEXT_SIZE_BIG};
 
 pub struct StatsTab {
     date: Date<Local>,
@@ -117,7 +118,7 @@ impl StatsTab {
                 .to_string()
         ));
 
-        let events = stechuhr::load_events_between(start_time, end_time, &shared.connection);
+        let events = db::load_events_between(start_time, end_time, &shared.connection);
 
         let staff_hours: Vec<PersonHours> = shared
             .staff

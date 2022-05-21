@@ -66,8 +66,8 @@ impl WorkStatus {
 
     pub fn to_unicode(&self) -> iced::Text {
         match self {
-            WorkStatus::Away => icons::icon(icons::crossmark_unicode()),
-            WorkStatus::Working => icons::icon(icons::checkmark_unicode()),
+            WorkStatus::Away => icons::icon(icons::emoji::crossmark),
+            WorkStatus::Working => icons::icon(icons::emoji::checkmark),
         }
     }
 }
@@ -324,14 +324,17 @@ where
     String: FromSql<Text, DB>,
     i32: FromSql<Integer, DB>,
 {
-    type Row = (i32, String, String, String, bool);
+    type Row = (i32, String, Option<String>, Option<String>, bool, bool);
 
     fn build(row: Self::Row) -> Self {
+        let pin = row.2.unwrap();
+        let cardid = row.3.unwrap();
+
         Self {
             uuid: row.0,
             name: row.1,
-            pin: row.2,
-            cardid: row.3,
+            pin,
+            cardid,
             is_visible: row.4,
         }
     }

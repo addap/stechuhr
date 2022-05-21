@@ -3,13 +3,14 @@ use std::cmp::min;
 use chrono::Locale;
 use iced::{
     alignment::Horizontal, button, keyboard, scrollable, text_input, Alignment, Button, Column,
-    Container, Element, Image, Length, Row, Scrollable, Space, Text, TextInput,
+    Container, Element, Image, Length, Row, Scrollable, Space, Text,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use iced_native::Event;
 use stechuhr::models::*;
+use stechuhr::{TEXT_SIZE, TEXT_SIZE_BIG};
 
-use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING, TEXT_SIZE, TEXT_SIZE_BIG};
+use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING};
 
 const PIN_LENGTH: usize = 4;
 const CARDID_LENGTH: usize = 10;

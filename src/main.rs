@@ -18,14 +18,13 @@ use iced::{
 use iced_aw::{modal, Card, Modal, TabBar, TabLabel};
 use iced_native::{event::Status, keyboard, Event};
 use std::{error, fmt, io};
+use stechuhr::db;
 use stechuhr::models::*;
 
 use tabs::management::{ManagementError, ManagementMessage, ManagementTab};
 use tabs::statistics::{StatisticsError, StatsMessage, StatsTab};
 use tabs::timetrack::{TimetrackMessage, TimetrackTab};
 
-const TEXT_SIZE: u16 = 24;
-const TEXT_SIZE_BIG: u16 = 42;
 const HEADER_SIZE: u16 = 32;
 const TAB_PADDING: u16 = 16;
 
@@ -35,7 +34,7 @@ pub fn main() -> iced::Result {
     dotenv().ok();
 
     env_logger::init();
-    let connection = stechuhr::establish_connection();
+    let connection = db::establish_connection();
 
     Stechuhr::run(Settings {
         // a.d. set this so that we can handle the close request ourselves to sync data to db
@@ -56,7 +55,7 @@ impl SharedData {
     /// Log a WorkEvent in the scrollbar area at the bottom and also persist it to the DB.
     fn log_event(&mut self, event: WorkEvent) {
         let new_eventt = NewWorkEventT::new(event);
-        let eventt = stechuhr::insert_event(&new_eventt, &self.connection);
+        let eventt = db::insert_event(&new_eventt, &self.connection);
         self.events.push(eventt);
     }
 
@@ -189,7 +188,7 @@ impl Application for Stechuhr {
     }
 
     fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
-        let staff = stechuhr::load_state(&connection);
+        let staff = db::load_state(&connection);
         let management = ManagementTab::new(&staff);
         // log should follow new events by default
         let mut log_scroll = scrollable::State::default();
@@ -238,7 +237,7 @@ impl Application for Stechuhr {
                         "Es sind noch Personen am Arbeiten. Bitte zuerst alle auf \"Pause\" stellen oder das Event beenden.",
                     ));
                 } else {
-                    match stechuhr::save_staff(&self.shared.staff, &self.shared.connection) {
+                    match db::save_staff(&self.shared.staff, &self.shared.connection) {
                         Ok(()) => self.should_exit = true,
                         Err(e) => self.shared.handle_result(Err(StechuhrError::Diesel(e))),
                     }
@@ -295,12 +294,6 @@ impl Application for Stechuhr {
     // DONE what is '_ in Element<'_, ...>?
     // explicitly elided lifetime. can also be set to 'a
     fn view(&mut self) -> Element<'_, Self::Message> {
-        // let theme = self
-        //     .settings_tab
-        //     .settings()
-        //     .tab_bar_theme
-        //     .unwrap_or_default();
-
         let logview = Container::new(Stechuhr::get_logview(&mut self.log_scroll, &self.shared))
             .padding(TAB_PADDING)
             .width(Length::Fill)
