@@ -140,7 +140,7 @@ impl FromStr for PIN {
     type Err = ModelError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let re = Regex::new(r"^\d{4}$").unwrap();
+        let re = Regex::new(r"^[A-Za-z0-9]{4}$").unwrap();
         if re.is_match(s) {
             Ok(PIN)
         } else {
