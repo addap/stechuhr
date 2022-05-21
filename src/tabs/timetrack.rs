@@ -263,8 +263,15 @@ impl Tab for TimetrackTab {
                     if let Some(staff_member) =
                         StaffMember::get_by_pin_or_card_id(&shared.staff, &input)
                     {
-                        self.break_modal_state.show(true);
-                        self.break_input_uuid = Some(staff_member.uuid());
+                        if staff_member.is_visible {
+                            self.break_modal_state.show(true);
+                            self.break_input_uuid = Some(staff_member.uuid());
+                        } else {
+                            self.break_input_value.clear();
+                            return Err(StechuhrError::Str(String::from(
+                                "Person mit dieser PIN/diesem Dongle wird nicht angezeigt.",
+                            )));
+                        }
                     } else {
                         self.break_input_value.clear();
                         return Err(StechuhrError::Str(String::from("Unbekannte PIN/Dongle")));
@@ -272,7 +279,7 @@ impl Tab for TimetrackTab {
                 } else {
                     self.break_input_value.clear();
                     return Err(StechuhrError::Str(format!(
-                        "\"{}\" is weder eine PIN noch ein Dongle",
+                        "\"{}\" ist weder eine PIN noch ein Dongle",
                         input
                     )));
                 }

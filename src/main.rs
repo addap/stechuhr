@@ -304,7 +304,8 @@ impl Application for Stechuhr {
         let logview = Container::new(Stechuhr::get_logview(&mut self.log_scroll, &self.shared))
             .padding(TAB_PADDING)
             .width(Length::Fill)
-            .height(Length::FillPortion(20));
+            .height(Length::FillPortion(20))
+            .style(stechuhr::style::Logview);
 
         let tab_bar = TabBar::new(self.active_tab as usize, Message::TabSelected)
             .padding(5)
@@ -387,7 +388,8 @@ trait Tab {
             .width(Length::Fill)
             .height(Length::Fill)
             .center_x()
-            .align_y(Vertical::Top);
+            .align_y(Vertical::Top)
+            .style(stechuhr::style::TabContent);
 
         Column::new().push(title).push(content).into()
     }

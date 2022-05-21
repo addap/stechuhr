@@ -254,30 +254,19 @@ impl StaffMember {
     // TODO is it possible/useful/necessary to "pull out" the lifetime from the Option type?
     // INVARIANT: pins and cardids are disjoint
     pub fn get_by_pin_or_card_id<'a>(staff: &'a [Self], ident: &str) -> Option<&'a Self> {
-        for staff_member in staff {
-            if staff_member.pin == ident || staff_member.cardid == ident {
-                return Some(staff_member);
-            }
-        }
-        None
+        staff
+            .iter()
+            .find(|staff_member| staff_member.pin == ident || staff_member.cardid == ident)
     }
 
-    pub fn get_by_uuid_mut<'a>(staff: &'a mut Vec<Self>, uuid: i32) -> Option<&'a mut Self> {
-        for staff_member in staff.iter_mut() {
-            if staff_member.uuid == uuid {
-                return Some(staff_member);
-            }
-        }
-        None
+    pub fn get_by_uuid_mut<'a>(staff: &'a mut [Self], uuid: i32) -> Option<&'a mut Self> {
+        staff
+            .iter_mut()
+            .find(|staff_member| staff_member.uuid == uuid)
     }
 
     pub fn get_by_uuid<'a>(staff: &'a [Self], uuid: i32) -> Option<&'a Self> {
-        for staff_member in staff {
-            if staff_member.uuid == uuid {
-                return Some(staff_member);
-            }
-        }
-        None
+        staff.iter().find(|staff_member| staff_member.uuid == uuid)
     }
 }
 

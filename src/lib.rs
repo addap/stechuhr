@@ -2,6 +2,7 @@ pub mod date_ext;
 pub mod icons;
 pub mod models;
 pub mod schema;
+pub mod style;
 
 #[macro_use]
 extern crate diesel;
