@@ -46,7 +46,6 @@ impl TimetrackTab {
             break_input_value: String::new(),
             break_input_uuid: None,
             break_input_state: text_input::State::default(),
-            // TODO why does State not take the type argument <BreakModalState> here?
             break_modal_state: modal::State::default(),
             staff_scroll_state: scrollable::State::default(),
         }

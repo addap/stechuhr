@@ -8,7 +8,7 @@ use pbkdf2::password_hash::PasswordHash as PBKDF2Hash;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_lexpr;
-use std::borrow::Borrow;
+use std::borrow::Cow;
 use std::str::FromStr;
 use std::{error, fmt, io};
 
@@ -101,7 +101,6 @@ impl fmt::Display for WorkEvent {
             }
             WorkEvent::EventStart => String::from("Event gestartet"),
             WorkEvent::EventOver => String::from("Event gestoppt"),
-            // TODO can we add color with the formatter?
             WorkEvent::Info(msg) => format!("Info: {}", msg),
             WorkEvent::Error(msg) => format!("Error: {}", msg),
         };
@@ -172,7 +171,7 @@ impl FromStr for Cardid {
 #[derive(Debug, Clone, AsExpression, AsChangeset, Identifiable)]
 #[table_name = "staff"]
 #[primary_key(uuid)]
-pub struct LoadStaffMember {
+pub struct DBStaffMember {
     uuid: i32,
     name: String,
     pin: String,
@@ -180,7 +179,7 @@ pub struct LoadStaffMember {
     is_visible: bool,
 }
 
-impl LoadStaffMember {
+impl DBStaffMember {
     pub fn uuid(&self) -> i32 {
         self.uuid
     }
@@ -199,6 +198,7 @@ impl LoadStaffMember {
 
 /// The actual staff member that is used in the program.
 /// status is computed based on the work events
+#[derive(Debug, Clone)]
 pub struct StaffMember {
     uuid: i32,
     pub name: String,
@@ -208,32 +208,21 @@ pub struct StaffMember {
     pub is_visible: bool,
 }
 
-// TODO for persist_staff_member I need a LoadStaffMember so I have to convert the &StaffMember to an owned value, which is uneccessary.
+// DONE for save_staff_member I need a DBStaffMember so I have to convert the &StaffMember to an owned value, which is uneccessary.
 // How can I implement AsChangeset for StaffMember directly?
-impl<T> From<T> for LoadStaffMember
-where
-    T: Borrow<StaffMember>,
-{
-    fn from(staff_member: T) -> Self {
-        let staff_member = staff_member.borrow();
+// -> Implementing AsChangeset manually is pretty ugly. So I just use another type for it which seems to be the recommended method. (https://github.com/diesel-rs/diesel/blob/master/guide_drafts/trait_derives.md#aschangeset)
+impl<'a> From<Cow<'a, StaffMember>> for DBStaffMember {
+    fn from(staff_member: Cow<StaffMember>) -> Self {
+        let staff_member = staff_member.into_owned();
 
         Self {
-            uuid: staff_member.uuid.to_owned(),
-            name: staff_member.name.to_owned(),
-            pin: staff_member.pin.to_owned(),
-            cardid: staff_member.cardid.to_owned(),
+            uuid: staff_member.uuid,
+            name: staff_member.name,
+            pin: staff_member.pin,
+            cardid: staff_member.cardid,
             is_visible: staff_member.is_visible,
         }
     }
-}
-
-#[derive(Debug, Clone, Insertable)]
-#[table_name = "staff"]
-pub struct NewStaffMember {
-    // TODO how to return strig reference from getter? Lifetime annotation on &str did not work
-    pub name: String,
-    pub pin: String,
-    pub cardid: String,
 }
 
 impl StaffMember {
@@ -250,10 +239,7 @@ impl StaffMember {
         None
     }
 
-    // DONE can I use lifetimes to return a reference to the staffmember?
-    // yes, by adding the generic lifetime parameter everywhere
-    // TODO is it possible/useful/necessary to "pull out" the lifetime from the Option type?
-    // INVARIANT: pins and cardids are disjoint
+    /// INVARIANT: pins and cardids are disjoint
     pub fn get_by_pin_or_card_id<'a>(staff: &'a [Self], ident: &str) -> Option<&'a Self> {
         staff
             .iter()
@@ -269,6 +255,14 @@ impl StaffMember {
     pub fn get_by_uuid<'a>(staff: &'a [Self], uuid: i32) -> Option<&'a Self> {
         staff.iter().find(|staff_member| staff_member.uuid == uuid)
     }
+}
+
+#[derive(Debug, Clone, Insertable)]
+#[table_name = "staff"]
+pub struct NewStaffMember {
+    pub name: String,
+    pub pin: String,
+    pub cardid: String,
 }
 
 impl NewStaffMember {
@@ -290,7 +284,6 @@ impl NewStaffMember {
 }
 
 /// A pbkdf2 password hash string in PHC format.
-/// TODO could already parse PHC string in Queryable
 #[derive(Debug, AsExpression, Insertable)]
 #[table_name = "passwords"]
 pub struct PasswordHash {
@@ -312,12 +305,10 @@ impl PasswordHash {
 }
 
 /* Build my own queryable to parse the WorkStatus of a StaffMember.
- * But since status is now a simple boolean, it could also be derived. */
-/* from https://docs.diesel.rs/diesel/deserialize/trait.Queryable.html */
-// type DB = diesel::sqlite::Sqlite;
+ * from https://docs.diesel.rs/diesel/deserialize/trait.Queryable.html */
 use diesel::backend::Backend;
 
-impl<DB> Queryable<staff::SqlType, DB> for LoadStaffMember
+impl<DB> Queryable<staff::SqlType, DB> for DBStaffMember
 where
     DB: Backend,
     bool: FromSql<Bool, DB>,
@@ -418,17 +409,3 @@ where
         Ok(serde_lexpr::from_str(&value)?)
     }
 }
-
-// impl<DB: Backend> FromSql<SmallInt, DB> for RecordType
-// where
-//     i16: FromSql<SmallInt, DB>,
-// {
-//     fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
-//         let v = i16::from_sql(bytes)?;
-//         Ok(match v {
-//             1 => RecordType::A,
-//             2 => RecordType::B,
-//             _ => return Err("replace me with a real error".into()),
-//         })
-//     }
-// }

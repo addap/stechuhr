@@ -1,11 +1,12 @@
 use crate::models::{
-    LoadStaffMember, NewStaffMember, NewWorkEventT, PasswordHash, StaffMember, WorkEvent,
-    WorkEventT, WorkStatus,
+    DBStaffMember, NewStaffMember, NewWorkEventT, PasswordHash, StaffMember, WorkEvent, WorkEventT,
+    WorkStatus,
 };
 use crate::schema;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use pbkdf2::{password_hash::PasswordVerifier, Pbkdf2};
+use std::borrow::Cow;
 use std::env;
 
 pub fn establish_connection() -> SqliteConnection {
@@ -19,11 +20,11 @@ pub fn establish_connection() -> SqliteConnection {
 ///*************************/
 
 /// Load a staff member from the database.
-fn load_staff(connection: &SqliteConnection) -> Vec<LoadStaffMember> {
+fn load_staff(connection: &SqliteConnection) -> Vec<DBStaffMember> {
     use schema::staff::dsl::*;
     staff
         .filter(is_active.eq(true))
-        .load::<LoadStaffMember>(connection)
+        .load::<DBStaffMember>(connection)
         .expect("Error loading staff from DB")
 }
 
@@ -74,7 +75,7 @@ pub fn save_staff_member(
     staff_member: &StaffMember,
     connection: &SqliteConnection,
 ) -> QueryResult<()> {
-    let staff_member = LoadStaffMember::from(staff_member);
+    let staff_member = DBStaffMember::from(Cow::Borrowed(staff_member));
 
     diesel::update(&staff_member)
         .set(&staff_member)
@@ -97,7 +98,6 @@ pub fn insert_staff(
     staff_member: NewStaffMember,
     connection: &SqliteConnection,
 ) -> QueryResult<StaffMember> {
-    // TODO uniqueness checks, so return Result
     use schema::staff::dsl::*;
 
     diesel::insert_into(staff)
@@ -107,7 +107,7 @@ pub fn insert_staff(
     let mut newly_inserted = staff
         .order_by(id.desc())
         .limit(1)
-        .load::<LoadStaffMember>(connection)?;
+        .load::<DBStaffMember>(connection)?;
 
     let newly_inserted = newly_inserted.remove(0);
 
@@ -165,7 +165,7 @@ pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
     return false;
 }
 
-fn staff_compute_status(staff: Vec<LoadStaffMember>, events: &[WorkEventT]) -> Vec<StaffMember> {
+fn staff_compute_status(staff: Vec<DBStaffMember>, events: &[WorkEventT]) -> Vec<StaffMember> {
     staff
         .into_iter()
         .map(|staff_member| {
@@ -192,7 +192,7 @@ pub fn delete_staff_member(
 ) -> QueryResult<()> {
     use schema::staff::dsl::*;
 
-    let staff_member = LoadStaffMember::from(staff_member);
+    let staff_member = DBStaffMember::from(Cow::Owned(staff_member));
 
     diesel::update(&staff_member)
         .set((
