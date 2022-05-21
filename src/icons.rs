@@ -17,3 +17,11 @@ pub fn icon(unicode: char) -> Text {
 pub fn eye_unicode() -> char {
     '\u{1F441}'
 }
+
+pub fn checkmark_unicode() -> char {
+    '\u{2705}'
+}
+
+pub fn crossmark_unicode() -> char {
+    '\u{274E}'
+}

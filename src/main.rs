@@ -305,7 +305,7 @@ impl Application for Stechuhr {
             .padding(TAB_PADDING)
             .width(Length::Fill)
             .height(Length::FillPortion(20))
-            .style(stechuhr::style::Logview);
+            .style(stechuhr::style::LogviewStyle);
 
         let tab_bar = TabBar::new(self.active_tab as usize, Message::TabSelected)
             .padding(5)
@@ -389,7 +389,7 @@ trait Tab {
             .height(Length::Fill)
             .center_x()
             .align_y(Vertical::Top)
-            .style(stechuhr::style::TabContent);
+            .style(stechuhr::style::TabContentStyle);
 
         Column::new().push(title).push(content).into()
     }

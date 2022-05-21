@@ -1,3 +1,4 @@
+use crate::icons;
 use crate::schema::{events, passwords, staff};
 use chrono::{Local, NaiveDateTime};
 use diesel::deserialize::{self, FromSql, Queryable};
@@ -63,10 +64,10 @@ impl WorkStatus {
         }
     }
 
-    pub fn to_unicode(&self) -> &'static str {
+    pub fn to_unicode(&self) -> iced::Text {
         match self {
-            WorkStatus::Away => "❌",
-            WorkStatus::Working => "✅",
+            WorkStatus::Away => icons::icon(icons::crossmark_unicode()),
+            WorkStatus::Working => icons::icon(icons::checkmark_unicode()),
         }
     }
 }

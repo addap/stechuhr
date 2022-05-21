@@ -46,6 +46,11 @@ impl StaffMemberState {
         self.cardid_value.clone_from(cardid);
         self
     }
+
+    fn with_visible(mut self, is_visible: bool) -> Self {
+        self.is_visible = is_visible;
+        self
+    }
 }
 
 impl Default for StaffMemberState {
@@ -78,6 +83,7 @@ impl From<&[StaffMember]> for StaffState {
                     .with_name(&staff_member.name)
                     .with_pin(&staff_member.pin)
                     .with_cardid(&staff_member.cardid)
+                    .with_visible(staff_member.is_visible)
             })
             .collect();
 
@@ -311,104 +317,111 @@ impl ManagementTab {
     where
         F: 'a + Fn(String) -> ManagementMessage,
     {
-        TextInput::new(state, placeholder, value, f)
+        stechuhr::style::text_input(state, placeholder, value, f)
             .on_submit(ManagementMessage::GenericSubmit)
             .width(Length::FillPortion(3))
     }
 
     fn internal_view(&mut self) -> Element<'_, ManagementMessage> {
         const SPACING: u16 = 100;
-        let mut staff_edit = Scrollable::new(&mut self.staff_scroll_state);
+        let mut staff_edit = Scrollable::new(&mut self.staff_scroll_state).padding(10);
+        let mut even = true;
 
         for (idx, member_state) in self.staff_state.member_states.iter_mut().enumerate() {
-            let staff_row = Row::new()
-                .push(
-                    ManagementTab::text_input(
-                        &mut member_state.name_state,
-                        "Name eingeben",
-                        &member_state.name_value.clone(),
-                        move |s| ManagementMessage::ChangeName(idx, s),
+            let staff_row = Container::new(
+                Row::new()
+                    .push(
+                        ManagementTab::text_input(
+                            &mut member_state.name_state,
+                            "Name eingeben",
+                            &member_state.name_value.clone(),
+                            move |s| ManagementMessage::ChangeName(idx, s),
+                        )
+                        .width(Length::FillPortion(3)),
                     )
-                    .width(Length::FillPortion(3)),
-                )
-                .push(
-                    ManagementTab::text_input(
-                        &mut member_state.pin_state,
-                        "PIN eingeben",
-                        &member_state.pin_value.clone(),
-                        move |s| ManagementMessage::ChangePIN(idx, s),
+                    .push(
+                        ManagementTab::text_input(
+                            &mut member_state.pin_state,
+                            "PIN eingeben",
+                            &member_state.pin_value.clone(),
+                            move |s| ManagementMessage::ChangePIN(idx, s),
+                        )
+                        .width(Length::FillPortion(3)),
                     )
-                    .width(Length::FillPortion(3)),
-                )
-                .push(
-                    ManagementTab::text_input(
-                        &mut member_state.cardid_state,
-                        "click & swipe RFID dongle",
-                        &member_state.cardid_value.clone(),
-                        move |s| ManagementMessage::ChangeCardID(idx, s),
+                    .push(
+                        ManagementTab::text_input(
+                            &mut member_state.cardid_state,
+                            "click & swipe RFID dongle",
+                            &member_state.cardid_value.clone(),
+                            move |s| ManagementMessage::ChangeCardID(idx, s),
+                        )
+                        .width(Length::FillPortion(3)),
                     )
-                    .width(Length::FillPortion(3)),
-                )
-                .push(
-                    Checkbox::new(member_state.is_visible, eye_unicode(), move |b| {
-                        ManagementMessage::ToggleVisible(idx, b)
-                    })
-                    .font(ICONS)
-                    .text_size(TEXT_SIZE_EMOJI)
-                    .width(Length::FillPortion(1)),
-                )
-                .push(
-                    Button::new(
-                        &mut member_state.submit_state,
-                        Text::new("Speichern").horizontal_alignment(Horizontal::Center),
+                    .push(
+                        Checkbox::new(member_state.is_visible, eye_unicode(), move |b| {
+                            ManagementMessage::ToggleVisible(idx, b)
+                        })
+                        .font(ICONS)
+                        .text_size(TEXT_SIZE_EMOJI)
+                        .width(Length::FillPortion(1)),
                     )
-                    .on_press(ManagementMessage::SubmitRow(idx))
-                    .width(Length::FillPortion(2)),
-                )
-                .spacing(SPACING);
+                    .push(
+                        Button::new(
+                            &mut member_state.submit_state,
+                            Text::new("Speichern").horizontal_alignment(Horizontal::Center),
+                        )
+                        .on_press(ManagementMessage::SubmitRow(idx))
+                        .width(Length::FillPortion(2)),
+                    )
+                    .spacing(SPACING),
+            )
+            .style(stechuhr::style::management_row(&mut even));
             staff_edit = staff_edit.push(staff_row);
         }
 
         // last inputs for new staff member
         {
-            let new_row = Row::new()
-                .push(
-                    ManagementTab::text_input(
-                        &mut self.new_name_state,
-                        "Name eingeben",
-                        &self.new_name_value,
-                        |s| ManagementMessage::ChangeNewRow(Some(s), None, None),
+            let new_row = Container::new(
+                Row::new()
+                    .push(
+                        ManagementTab::text_input(
+                            &mut self.new_name_state,
+                            "Name eingeben",
+                            &self.new_name_value,
+                            |s| ManagementMessage::ChangeNewRow(Some(s), None, None),
+                        )
+                        .width(Length::FillPortion(3)),
                     )
-                    .width(Length::FillPortion(3)),
-                )
-                .push(
-                    ManagementTab::text_input(
-                        &mut self.new_pin_state,
-                        "PIN eingeben",
-                        &self.new_pin_value,
-                        |s| ManagementMessage::ChangeNewRow(None, Some(s), None),
+                    .push(
+                        ManagementTab::text_input(
+                            &mut self.new_pin_state,
+                            "PIN eingeben",
+                            &self.new_pin_value,
+                            |s| ManagementMessage::ChangeNewRow(None, Some(s), None),
+                        )
+                        .width(Length::FillPortion(3)),
                     )
-                    .width(Length::FillPortion(3)),
-                )
-                .push(
-                    ManagementTab::text_input(
-                        &mut self.new_cardid_state,
-                        "click & swipe RFID dongle",
-                        &self.new_cardid_value,
-                        move |s| ManagementMessage::ChangeNewRow(None, None, Some(s)),
+                    .push(
+                        ManagementTab::text_input(
+                            &mut self.new_cardid_state,
+                            "click & swipe RFID dongle",
+                            &self.new_cardid_value,
+                            move |s| ManagementMessage::ChangeNewRow(None, None, Some(s)),
+                        )
+                        .width(Length::FillPortion(3)),
                     )
-                    .width(Length::FillPortion(3)),
-                )
-                .push(Space::new(Length::FillPortion(1), Length::Shrink))
-                .push(
-                    Button::new(
-                        &mut self.new_submit_state,
-                        Text::new("Speichern").horizontal_alignment(Horizontal::Center),
+                    .push(Space::new(Length::FillPortion(1), Length::Shrink))
+                    .push(
+                        Button::new(
+                            &mut self.new_submit_state,
+                            Text::new("Speichern").horizontal_alignment(Horizontal::Center),
+                        )
+                        .on_press(ManagementMessage::SubmitNewRow)
+                        .width(Length::FillPortion(2)),
                     )
-                    .on_press(ManagementMessage::SubmitNewRow)
-                    .width(Length::FillPortion(2)),
-                )
-                .spacing(SPACING);
+                    .spacing(SPACING),
+            )
+            .style(stechuhr::style::management_row(&mut even));
             staff_edit = staff_edit.push(new_row);
         }
 
@@ -449,7 +462,7 @@ impl ManagementTab {
                 Row::new()
                     .push(Space::new(Length::FillPortion(2), Length::Shrink))
                     .push(
-                        TextInput::new(
+                        stechuhr::style::text_input(
                             &mut self.admin_password_state,
                             "Administrator Passwort",
                             &self.admin_password_value,
@@ -475,7 +488,7 @@ impl ManagementTab {
         let whoami_modal = Modal::new(&mut self.whoami_modal_state, content, move |state| {
             Card::new(Text::new("Dongle Abfrage"), {
                 state.input_state.focus();
-                TextInput::new(
+                stechuhr::style::text_input(
                     &mut state.input_state,
                     "",
                     &state.input_value,

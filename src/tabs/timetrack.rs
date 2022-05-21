@@ -177,7 +177,7 @@ impl Tab for TimetrackTab {
         let staff_view =
             Scrollable::new(&mut self.staff_scroll_state).push(staff_view.height(Length::Shrink));
 
-        let dongle_input = TextInput::new(
+        let dongle_input = stechuhr::style::text_input(
             &mut self.break_input_state,
             "PIN eingeben/Dongle swipen",
             &self.break_input_value,

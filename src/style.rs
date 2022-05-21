@@ -1,10 +1,12 @@
-use iced::{button, container, text_input, Background, Color, Vector};
+use iced::{button, container, text_input, Background, Color, TextInput, Vector};
 
-pub struct Logview;
-pub struct TabContent;
-pub struct TextInput;
+pub struct LogviewStyle;
+pub struct TabContentStyle;
+pub struct TextInputStyle;
+pub struct ManagementRow1;
+pub struct ManagementRow2;
 
-impl container::StyleSheet for Logview {
+impl container::StyleSheet for LogviewStyle {
     fn style(&self) -> container::Style {
         container::Style {
             background: Some(Color::from_rgb8(240, 240, 240).into()),
@@ -16,7 +18,7 @@ impl container::StyleSheet for Logview {
     }
 }
 
-impl container::StyleSheet for TabContent {
+impl container::StyleSheet for TabContentStyle {
     fn style(&self) -> container::Style {
         container::Style {
             background: Some(Color::from_rgb8(250, 250, 250).into()),
@@ -28,24 +30,44 @@ impl container::StyleSheet for TabContent {
     }
 }
 
-impl text_input::StyleSheet for TextInput {
-    fn active(&self) -> text_input::Style {
-        todo!()
-    }
+pub fn text_input<'a, F, M>(
+    state: &'a mut text_input::State,
+    placeholder: &str,
+    value: &str,
+    f: F,
+) -> TextInput<'a, M>
+where
+    F: 'a + Fn(String) -> M,
+    M: Clone,
+{
+    TextInput::new(state, placeholder, value, f).padding(5)
+}
 
-    fn focused(&self) -> text_input::Style {
-        todo!()
+impl container::StyleSheet for ManagementRow1 {
+    fn style(&self) -> container::Style {
+        container::Style {
+            background: Some(Color::from_rgb8(240, 240, 240).into()),
+            ..container::Style::default()
+        }
     }
+}
 
-    fn placeholder_color(&self) -> Color {
-        todo!()
+impl container::StyleSheet for ManagementRow2 {
+    fn style(&self) -> container::Style {
+        container::Style {
+            background: None,
+            ..container::Style::default()
+        }
     }
+}
 
-    fn value_color(&self) -> Color {
-        todo!()
-    }
+pub fn management_row(even: &mut bool) -> Box<dyn container::StyleSheet> {
+    let result: Box<dyn container::StyleSheet> = if *even {
+        Box::new(ManagementRow1)
+    } else {
+        Box::new(ManagementRow2)
+    };
 
-    fn selection_color(&self) -> Color {
-        todo!()
-    }
+    *even = !*even;
+    result
 }
