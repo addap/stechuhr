@@ -13,4 +13,5 @@ mkdir -p auswertung
 cat > .env << EOF
 DATABASE_URL="./stechuhr.sqlite3"
 RUST_LOG=error
+WGPU_BACKEND=gl
 EOF

@@ -7,7 +7,7 @@ default-run = "stechuhr"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-iced = { version = "0.4", features = ["tokio", "image"] }
+iced = { version = "0.4", features = ["tokio"] }
 iced_native = { version = "0.5" }
 # compiled with commit 045e16df2706b938ebf657ad2f18a08f48496bcf
 iced_aw = { git = "https://github.com/iced-rs/iced_aw", branch = "main", default-features = false, features = ["modal", "colors", "card", "tabs", "date_picker", "tab_bar"] }

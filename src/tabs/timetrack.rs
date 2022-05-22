@@ -3,7 +3,7 @@ use std::cmp::min;
 use chrono::Locale;
 use iced::{
     alignment::Horizontal, button, keyboard, scrollable, text_input, Alignment, Button, Column,
-    Container, Element, Image, Length, Row, Scrollable, Space, Text,
+    Container, Element, Length, Row, Scrollable, Space, Text,
 };
 use iced_aw::{modal, Card, Modal, TabLabel};
 use iced_native::Event;
@@ -80,9 +80,8 @@ impl TimetrackTab {
         let (names, icons) = staff
             .iter()
             .fold((names, icons), |(names, icons), staff_member| {
-                let img = Image::new(staff_member.status.to_emoji())
-                    .width(Length::Units(TEXT_SIZE))
-                    .height(Length::Units(TEXT_SIZE));
+                let icon = staff_member.status.to_unicode();
+
                 (
                     names.push(
                         Text::new(format!(
@@ -92,7 +91,7 @@ impl TimetrackTab {
                         ))
                         .size(TEXT_SIZE),
                     ),
-                    icons.push(img),
+                    icons.push(icon),
                 )
             });
 

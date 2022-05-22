@@ -386,10 +386,12 @@ impl ManagementTab {
                     )
                     .push(Space::new(Length::FillPortion(5), Length::Shrink))
                     .push(
-                        Checkbox::new(member_state.is_visible, icons::emoji::eye, move |b| {
-                            ManagementMessage::ToggleVisible(idx, b)
-                        })
-                        .font(icons::ICON_FONT)
+                        Checkbox::new(
+                            member_state.is_visible,
+                            icons::emoji::eye.codepoint,
+                            move |b| ManagementMessage::ToggleVisible(idx, b),
+                        )
+                        .font(icons::FONT_SYMBOLA)
                         .text_size(TEXT_SIZE_EMOJI)
                         .width(Length::FillPortion(8)),
                     )

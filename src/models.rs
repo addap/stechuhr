@@ -1,9 +1,10 @@
-use crate::icons;
+use crate::icons::{self, FONT_EMOJIONE, TEXT_SIZE_EMOJI};
 use crate::schema::{events, passwords, staff};
 use chrono::{Local, NaiveDateTime};
 use diesel::deserialize::{self, FromSql, Queryable};
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::*;
+use iced::Color;
 use pbkdf2::password_hash::PasswordHash as PBKDF2Hash;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -66,8 +67,18 @@ impl WorkStatus {
 
     pub fn to_unicode(&self) -> iced::Text {
         match self {
-            WorkStatus::Away => icons::icon(icons::emoji::crossmark),
-            WorkStatus::Working => icons::icon(icons::emoji::checkmark),
+            WorkStatus::Away => icons::icon(
+                icons::emoji::crossmark
+                    .with_font(FONT_EMOJIONE)
+                    .with_color(Some(Color::from_rgb8(0xFF, 0x00, 0x00)))
+                    .with_size(TEXT_SIZE_EMOJI + 4),
+            ),
+            WorkStatus::Working => icons::icon(
+                icons::emoji::checkmark
+                    .with_font(FONT_EMOJIONE)
+                    .with_color(Some(Color::from_rgb8(0x00, 0xA4, 0x07)))
+                    .with_size(TEXT_SIZE_EMOJI + 4),
+            ),
         }
     }
 }
