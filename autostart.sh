@@ -1,4 +1,4 @@
 #!/bin/sh
 
-sleep 5
-./target/debug/stechuhr
+cd stechuhr
+systemd-cat -t stechuhr ./target/debug/stechuhr

@@ -72,32 +72,28 @@ impl TimetrackTab {
             .width(Length::FillPortion(80))
             .spacing(10)
             .align_items(Alignment::End);
-        let icons = Column::new()
-            .width(Length::FillPortion(20))
-            .spacing(10)
-            .align_items(Alignment::Start);
 
-        let (names, icons) = staff
-            .iter()
-            .fold((names, icons), |(names, icons), staff_member| {
-                let icon = staff_member.status.to_unicode();
+        let names = staff.iter().fold(names, |names, staff_member| {
+            let icon = staff_member.status.to_unicode();
 
-                (
-                    names.push(
-                        Text::new(format!(
-                            "{}: {}",
-                            staff_member.name,
-                            staff_member.status.to_string()
-                        ))
-                        .size(TEXT_SIZE),
-                    ),
-                    icons.push(icon),
-                )
-            });
+            let name = Text::new(format!(
+                "{}: {}",
+                staff_member.name,
+                staff_member.status.to_string()
+            ))
+            .size(TEXT_SIZE);
+
+            let r = Row::new()
+                .push(name)
+                .push(icon)
+                .spacing(10)
+                .align_items(Alignment::Center);
+
+            names.push(r)
+        });
 
         Row::new()
             .push(names)
-            .push(icons)
             .width(Length::FillPortion(10))
             .spacing(10)
             .into()
@@ -116,9 +112,9 @@ impl TimetrackTab {
         let mut extra = staff.len() % COLUMNS;
 
         let padding1 = Space::new(Length::Shrink, Length::Shrink);
-        let padding2 = Space::new(Length::Shrink, Length::Shrink);
+        let padding2 = Space::new(Length::FillPortion(5), Length::Shrink);
 
-        let mut staff_view = Row::new().spacing(50).push(padding1);
+        let mut staff_view = Row::new().spacing(10).push(padding1);
         let mut start = 0;
 
         for _ in 0..COLUMNS {
