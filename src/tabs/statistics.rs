@@ -48,11 +48,11 @@ pub enum StatsMessage {
 struct PersonHours<'a> {
     #[serde(rename = "Name")]
     name: &'a str,
-    #[serde(rename = "Minuten 9 - 22 Uhr")]
+    #[serde(rename = "Minuten 6 - 22 Uhr")]
     minutes_1: i64,
     #[serde(rename = "Minuten 22 - 24 Uhr")]
     minutes_2: i64,
-    #[serde(rename = "Minuten 24 - 9 Uhr")]
+    #[serde(rename = "Minuten 24 - 6 Uhr")]
     minutes_3: i64,
     #[serde(rename = "Minuten Gewichtet Total")]
     minutes_weighted: i64,
@@ -98,11 +98,11 @@ impl StatsTab {
 
     fn generate_csv(&mut self, shared: &mut SharedData) -> Result<(), StechuhrError> {
         // start and end time will be first and last day of the selected month, respectively
-        let _9am = NaiveTime::from_hms(9, 0, 0);
-        let start_time = self.date.naive_local().first_dom().and_time(_9am);
+        let _6am = NaiveTime::from_hms(6, 0, 0);
+        let start_time = self.date.naive_local().first_dom().and_time(_6am);
         let start_time_local = Local.from_local_datetime(&start_time).unwrap();
 
-        let end_time = self.date.naive_local().last_dom().succ().and_time(_9am);
+        let end_time = self.date.naive_local().last_dom().succ().and_time(_6am);
         let end_time_local = Local.from_local_datetime(&end_time).unwrap();
 
         shared.log_info(format!(
