@@ -46,6 +46,7 @@ impl DurationSMLabel {
     }
 }
 
+/// State machine to distribute seconds between two datetimes into buckets.
 struct DurationSM {
     buckets: [Secs; 3],
     label: DurationSMLabel,

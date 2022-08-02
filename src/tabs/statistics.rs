@@ -21,10 +21,13 @@ use iced_aw::{
     TabLabel,
 };
 use iced_native::Event;
-use stechuhr::date_ext::NaiveDateExt;
+use stechuhr::{
+    date_ext::NaiveDateExt,
+    models::{StaffMember, WorkEventT},
+};
 
 use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING};
-use event_eval::EventSM;
+use event_eval::{EventSM, PersonHoursRaw};
 use stechuhr::{db, TEXT_SIZE_BIG};
 
 pub struct StatsTab {
@@ -96,6 +99,34 @@ impl StatsTab {
         }
     }
 
+    /// Create a EventSM state machine and feed all WorkEventT events to it to compute the StaffMemberHours.
+    fn generate_hours_for_staff_member<'a>(
+        events: &'a Vec<WorkEventT>,
+    ) -> impl 'a + Fn(&StaffMember) -> Result<(PersonHoursRaw, Vec<SoftStatisticsError>), StatisticsError>
+    {
+        move |staff_member| {
+            let mut event_sm = EventSM::new(staff_member);
+
+            for event in events {
+                event_sm.process(event)?;
+            }
+
+            Ok(event_sm.finish())
+        }
+    }
+
+    fn compute_weighted_hours<'a>(hours_raw: PersonHoursRaw<'a>) -> PersonHours<'a> {
+        let [minutes_1, minutes_2, minutes_3, minutes_weigthed] = hours_raw.duration.num_minutes();
+
+        PersonHours::new(
+            &hours_raw.staff_member.name[..],
+            minutes_1,
+            minutes_2,
+            minutes_3,
+            minutes_weigthed,
+        )
+    }
+
     fn generate_csv(&mut self, shared: &mut SharedData) -> Result<(), StechuhrError> {
         // start and end time will be first and last day of the selected month, respectively
         let _6am = NaiveTime::from_hms(6, 0, 0);
@@ -120,44 +151,40 @@ impl StatsTab {
 
         let events = db::load_events_between(start_time, end_time, &shared.connection);
 
-        let staff_hours: Vec<PersonHours> = shared
+        let (hours_raw, soft_errors): (Vec<PersonHoursRaw>, Vec<Vec<SoftStatisticsError>>) = shared
             .staff
             .iter()
             // associate with each staff member a WorkDuration, which counts the weighted minutes of work time
-            .map(|staff_member| {
-                let mut event_sm = EventSM::new(staff_member);
+            .map(StatsTab::generate_hours_for_staff_member(&events))
+            .collect::<Result<Vec<(PersonHoursRaw, Vec<SoftStatisticsError>)>, StatisticsError>>()?
+            .into_iter()
+            .unzip();
 
-                for event in &events {
-                    event_sm.process(event)?;
-                }
-
-                event_sm.finish()
-            })
-            .collect::<Result<Vec<(_, _)>, StatisticsError>>()?
+        let staff_hours: Vec<PersonHours> = hours_raw
             .into_iter()
             // transform the calculated WorkDuration into a PersonHours struct for serialization
-            .map(|(staff_member, t)| {
-                let [minutes_1, minutes_2, minutes_3, minutes_weigthed] = t.num_minutes();
-
-                PersonHours::new(
-                    &staff_member.name[..],
-                    minutes_1,
-                    minutes_2,
-                    minutes_3,
-                    minutes_weigthed,
-                )
-            })
+            .map(StatsTab::compute_weighted_hours)
             .collect();
 
+        // Write everyting into a CSV file.
         let filename = format!(
             "./auswertung/{}.csv",
             self.date
                 .format_localized("%Y-%m %B", Locale::de_DE)
                 .to_string()
         );
-        let mut wtr = csv::Writer::from_path(&filename)?;
+        let mut wtr = csv::WriterBuilder::new()
+            // enable flexible writer since errors are just one field
+            .flexible(true)
+            .from_path(&filename)?;
+
         for hours in &staff_hours {
             wtr.serialize(hours)?;
+        }
+        for error in soft_errors.iter().flatten() {
+            shared.log_error(error.to_string());
+            // pad with units to put errors into a separate column
+            wtr.serialize(((), (), (), (), (), (), error.to_string()))?;
         }
         wtr.flush()?;
 
@@ -262,41 +289,52 @@ impl Tab for StatsTab {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StatisticsError {
+    DurationError(Duration, Duration),
+}
+
+#[derive(Debug, Clone)]
+pub enum SoftStatisticsError {
     AlreadyWorking(NaiveDateTime, String),
     AlreadyAway(NaiveDateTime, String),
     OverWhileWorking(NaiveDateTime, String),
     StaffStillWorking(String),
-    DurationError(Duration, Duration),
 }
 
 impl error::Error for StatisticsError {}
+impl error::Error for SoftStatisticsError {}
 
 impl fmt::Display for StatisticsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match self {
-            StatisticsError::AlreadyWorking(date, name) => format!(
-                "Encountered StatusChange to Working at {} while staff {} was already working",
-                date, name
-            ),
-            StatisticsError::AlreadyAway(date, name) => format!(
-                "Encountered StatusChange to Away at {} while staff {} was already away",
-                date, name
-            ),
-            StatisticsError::OverWhileWorking(date, name) => format!(
-                "Encountered EventOver at {} while staff {} was still working",
-                date, name
-            ),
-            StatisticsError::StaffStillWorking(name) => {
-                format!(
-                    "Staff {} is still working at the end of the evaluation",
-                    name
-                )
-            }
-            StatisticsError::DurationError(d1, d2) => {
+            Self::DurationError(d1, d2) => {
                 format!("Error adding durations {} and {}", d1, d2)
             }
+        };
+        f.write_str(&description)
+    }
+}
+
+impl fmt::Display for SoftStatisticsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = match self {
+            Self::AlreadyWorking(date, name) => format!(
+                "Um {} wurde der Status von {} auf 'Arbeiten' gesetzt während sie schon am Arbeiten war. Inkonsistente Datenbank, bitte Adrian Bescheid sagen.",
+                date, name
+            ),
+            Self::AlreadyAway(date, name) => format!(
+                "Um {} wurde der Status von {} auf 'Pause' gesetzt während sie schon in der Pause war. Inkonsistente Datenbank oder Mitarbeiter hat über eine Monatsgrenze gearbeitet, bitte Adrian Bescheid sagen.",
+                date, name
+            ),
+            Self::OverWhileWorking(date, name) => format!(
+                "Um {} wurde eine Hochzeit beendet als {} noch gearbeitet hat. Inkonsistente Datenbank, bitte Adrian Bescheid sagen.",
+                date, name
+            ),
+            Self::StaffStillWorking(name) => format!(
+                "{} arbeitet noch am Ende der Auswertung am 1. des nächsten Monats um 6 Uhr morgens. Es wurde wahrscheinlich vergessen sich abzumelden.",
+                name
+            ),
         };
         f.write_str(&description)
     }
