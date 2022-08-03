@@ -195,6 +195,10 @@ impl DBStaffMember {
         self.uuid
     }
 
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
     pub fn with_status(self, status: WorkStatus) -> StaffMember {
         StaffMember {
             uuid: self.uuid,

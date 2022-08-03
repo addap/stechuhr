@@ -30,11 +30,17 @@ pub struct EventSM<'a> {
 }
 
 impl<'a> EventSM<'a> {
-    pub fn new(staff_member: &'a StaffMember) -> Self {
+    pub fn new(staff_member: &'a StaffMember, initial_start_time: Option<NaiveDateTime>) -> Self {
+        let label = if let Some(start_time) = initial_start_time {
+            EventSMLabel::Working(start_time)
+        } else {
+            EventSMLabel::Away
+        };
+
         Self {
             hours_raw: PersonHoursRaw::new(staff_member),
             soft_errors: Vec::new(),
-            label: EventSMLabel::Away,
+            label,
         }
     }
 

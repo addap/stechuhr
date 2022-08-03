@@ -168,22 +168,27 @@ pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
 fn staff_compute_status(staff: Vec<DBStaffMember>, events: &[WorkEventT]) -> Vec<StaffMember> {
     staff
         .into_iter()
-        .map(|staff_member| {
-            for eventt in events.iter().rev() {
-                match eventt.event {
-                    WorkEvent::StatusChange(id, _, status) if id == staff_member.uuid() => {
-                        return staff_member.with_status(status);
-                    }
-                    WorkEvent::EventOver => {
-                        return staff_member.with_status(WorkStatus::Away);
-                    }
-                    _ => {}
-                }
-            }
-
-            return staff_member.with_status(WorkStatus::Away);
-        })
+        .map(move |staff_member| staff_member_compute_status(staff_member, events))
         .collect()
+}
+
+pub fn staff_member_compute_status(
+    staff_member: DBStaffMember,
+    events: &[WorkEventT],
+) -> StaffMember {
+    for eventt in events.iter().rev() {
+        match eventt.event {
+            WorkEvent::StatusChange(id, _, status) if id == staff_member.uuid() => {
+                return staff_member.with_status(status);
+            }
+            WorkEvent::EventOver => {
+                return staff_member.with_status(WorkStatus::Away);
+            }
+            _ => {}
+        }
+    }
+
+    return staff_member.with_status(WorkStatus::Away);
 }
 
 pub fn delete_staff_member(

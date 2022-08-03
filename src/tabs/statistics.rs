@@ -12,9 +12,12 @@
 mod event_eval;
 mod time_eval;
 
-use std::{error, fmt};
+use std::{borrow::Cow, error, fmt};
 
-use chrono::{Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+use chrono::{
+    naive::MIN_DATETIME, Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, NaiveTime,
+    TimeZone,
+};
 use iced::{button, Alignment, Button, Column, Container, Element, Length, Row, Text};
 use iced_aw::{
     date_picker::{self, DatePicker},
@@ -23,7 +26,7 @@ use iced_aw::{
 use iced_native::Event;
 use stechuhr::{
     date_ext::NaiveDateExt,
-    models::{StaffMember, WorkEventT},
+    models::{DBStaffMember, StaffMember, WorkEventT, WorkStatus},
 };
 
 use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING};
@@ -102,10 +105,17 @@ impl StatsTab {
     /// Create a EventSM state machine and feed all WorkEventT events to it to compute the StaffMemberHours.
     fn generate_hours_for_staff_member<'a>(
         events: &'a Vec<WorkEventT>,
+        start_time: NaiveDateTime,
     ) -> impl 'a + Fn(&StaffMember) -> Result<(PersonHoursRaw, Vec<SoftStatisticsError>), StatisticsError>
     {
         move |staff_member| {
-            let mut event_sm = EventSM::new(staff_member);
+            let initial_start_time = if staff_member.status == WorkStatus::Working {
+                Some(start_time)
+            } else {
+                None
+            };
+
+            let mut event_sm = EventSM::new(staff_member, initial_start_time);
 
             for event in events {
                 event_sm.process(event)?;
@@ -149,13 +159,21 @@ impl StatsTab {
                 .to_string()
         ));
 
+        let previous_events = db::load_events_between(MIN_DATETIME, end_time, &shared.connection);
         let events = db::load_events_between(start_time, end_time, &shared.connection);
-
-        let (hours_raw, soft_errors): (Vec<PersonHoursRaw>, Vec<Vec<SoftStatisticsError>>) = shared
+        let evaluation_staff = shared
             .staff
             .iter()
-            // associate with each staff member a WorkDuration, which counts the weighted minutes of work time
-            .map(StatsTab::generate_hours_for_staff_member(&events))
+            .map(|staff_member| DBStaffMember::from(Cow::Borrowed(staff_member)))
+            .map(|staff_member| db::staff_member_compute_status(staff_member, &previous_events))
+            .collect::<Vec<_>>();
+
+        let (hours_raw, soft_errors): (Vec<PersonHoursRaw>, Vec<Vec<SoftStatisticsError>>) = evaluation_staff
+            .iter()
+            // Associate with each staff member a WorkDuration, which counts the minutes of work time
+            .map(StatsTab::generate_hours_for_staff_member(
+                &events, start_time,
+            ))
             .collect::<Result<Vec<(PersonHoursRaw, Vec<SoftStatisticsError>)>, StatisticsError>>()?
             .into_iter()
             .unzip();
