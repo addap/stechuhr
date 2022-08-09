@@ -8,27 +8,27 @@ type Secs = i64;
 const SECS_PER_HOUR: Secs = 60 * 60;
 
 enum DurationSMLabel {
-    L6_22,
-    L22_24,
-    L24_6,
+    L4_20,
+    L20_24,
+    L24_4,
 }
 
 impl DurationSMLabel {
     /* Compute the number of seconds in one time period */
     fn to_duration_seconds(&self) -> Secs {
         match self {
-            Self::L6_22 => (22 - 6) * SECS_PER_HOUR,
-            Self::L22_24 => (24 - 22) * SECS_PER_HOUR,
-            Self::L24_6 => 6 * SECS_PER_HOUR,
+            Self::L4_20 => (20 - 4) * SECS_PER_HOUR,
+            Self::L20_24 => (24 - 20) * SECS_PER_HOUR,
+            Self::L24_4 => (4 - 0) * SECS_PER_HOUR,
         }
     }
 
     /* Compute the first second of each time period */
     fn to_start_seconds(&self) -> Secs {
         match self {
-            Self::L6_22 => 6 * SECS_PER_HOUR,
-            Self::L22_24 => 22 * SECS_PER_HOUR,
-            Self::L24_6 => 0 * SECS_PER_HOUR,
+            Self::L4_20 => 4 * SECS_PER_HOUR,
+            Self::L20_24 => 20 * SECS_PER_HOUR,
+            Self::L24_4 => 0 * SECS_PER_HOUR,
         }
     }
 
@@ -36,12 +36,12 @@ impl DurationSMLabel {
     fn from_absolute_seconds(s: Secs) -> Self {
         assert!(s < 24 * SECS_PER_HOUR);
 
-        if s < 6 * SECS_PER_HOUR {
-            Self::L24_6
-        } else if s < 22 * SECS_PER_HOUR {
-            Self::L6_22
+        if s < 4 * SECS_PER_HOUR {
+            Self::L24_4
+        } else if s < 20 * SECS_PER_HOUR {
+            Self::L4_20
         } else {
-            Self::L22_24
+            Self::L20_24
         }
     }
 }
@@ -70,9 +70,9 @@ impl DurationSM {
     /* Advance to the next time period. */
     fn next_step(&mut self) {
         match self.label {
-            DurationSMLabel::L6_22 => self.label = DurationSMLabel::L22_24,
-            DurationSMLabel::L22_24 => self.label = DurationSMLabel::L24_6,
-            DurationSMLabel::L24_6 => self.label = DurationSMLabel::L6_22,
+            DurationSMLabel::L4_20 => self.label = DurationSMLabel::L20_24,
+            DurationSMLabel::L20_24 => self.label = DurationSMLabel::L24_4,
+            DurationSMLabel::L24_4 => self.label = DurationSMLabel::L4_20,
         }
     }
 
@@ -85,9 +85,9 @@ impl DurationSM {
      * The time that can be added must be less or equal to the iven total number of seconds left. */
     fn add_time(&mut self, s: Secs) {
         match self.label {
-            DurationSMLabel::L6_22 => self.buckets[0] += s,
-            DurationSMLabel::L22_24 => self.buckets[1] += s,
-            DurationSMLabel::L24_6 => self.buckets[2] += s,
+            DurationSMLabel::L4_20 => self.buckets[0] += s,
+            DurationSMLabel::L20_24 => self.buckets[1] += s,
+            DurationSMLabel::L24_4 => self.buckets[2] += s,
         }
         self.current_seconds = 0;
     }
@@ -129,9 +129,9 @@ impl WorkDuration {
 
     pub fn from_start_end_time(start_time: NaiveDateTime, end_time: NaiveDateTime) -> Self {
         // TODO ensure that naivedatetime is in correct timezone
-        // 6 Uhr - 22 Uhr -> bucket 1
-        // 22 Uhr - 24 Uhr -> bucket 2
-        // 24 Uhr - 6 Uhr -> bucket 3
+        // 4 Uhr - 20 Uhr -> bucket 1
+        // 20 Uhr - 24 Uhr -> bucket 2
+        // 24 Uhr - 4 Uhr -> bucket 3
         //
         // like in os
         // compute total number of seconds in duration

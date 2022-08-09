@@ -120,7 +120,7 @@ impl fmt::Display for WorkEvent {
     }
 }
 
-#[derive(Debug, Clone, AsExpression)]
+#[derive(Debug, Clone, AsExpression, Queryable)]
 pub struct WorkEventT {
     #[allow(unused)]
     id: i32,
@@ -356,24 +356,6 @@ where
 
     fn build(row: Self::Row) -> Self {
         PasswordHash::new(row.1)
-    }
-}
-
-impl<DB> Queryable<events::SqlType, DB> for WorkEventT
-where
-    DB: Backend,
-    i32: FromSql<Integer, DB>,
-    NaiveDateTime: FromSql<Timestamp, DB>,
-    WorkEvent: FromSql<Text, DB>,
-{
-    type Row = (i32, NaiveDateTime, WorkEvent);
-
-    fn build(row: Self::Row) -> Self {
-        WorkEventT {
-            id: row.0,
-            created_at: row.1,
-            event: row.2,
-        }
     }
 }
 
