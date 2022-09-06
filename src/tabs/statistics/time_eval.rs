@@ -156,15 +156,12 @@ impl WorkDuration {
         sm.to_work_duration()
     }
 
-    pub fn num_minutes(&self) -> [i64; 4] {
+    pub fn num_minutes(&self) -> [i64; 3] {
         let WorkDuration([t1, t2, t3]) = self;
         let minutes_1 = t1.num_minutes();
         let minutes_2 = t2.num_minutes();
         let minutes_3 = t3.num_minutes();
-        let minutes_weigthed =
-            (1.0 * (minutes_1 as f64) + 1.25 * (minutes_2 as f64) + 1.40 * (minutes_3 as f64))
-                .ceil() as i64;
 
-        [minutes_1, minutes_2, minutes_3, minutes_weigthed]
+        [minutes_1, minutes_2, minutes_3]
     }
 }

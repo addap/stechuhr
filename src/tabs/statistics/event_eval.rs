@@ -3,12 +3,13 @@ use chrono::NaiveDateTime;
 use stechuhr::models::{StaffMember, WorkEvent, WorkEventT, WorkStatus};
 
 /// The result of the computation done by EventSM.
-pub struct PersonHoursRaw<'a> {
+#[derive(Debug)]
+pub struct PersonHours<'a> {
     pub staff_member: &'a StaffMember,
     pub duration: WorkDuration,
 }
 
-impl<'a> PersonHoursRaw<'a> {
+impl<'a> PersonHours<'a> {
     fn new(staff_member: &'a StaffMember) -> Self {
         Self {
             staff_member,
@@ -24,7 +25,7 @@ enum EventSMLabel {
 
 /// State machine to compute the WorkDuration of a StaffMember based on a collection of events.
 pub struct EventSM<'a> {
-    hours_raw: PersonHoursRaw<'a>,
+    hours_raw: PersonHours<'a>,
     soft_errors: Vec<SoftStatisticsError>,
     label: EventSMLabel,
 }
@@ -38,7 +39,7 @@ impl<'a> EventSM<'a> {
         };
 
         Self {
-            hours_raw: PersonHoursRaw::new(staff_member),
+            hours_raw: PersonHours::new(staff_member),
             soft_errors: Vec::new(),
             label,
         }
@@ -108,7 +109,7 @@ impl<'a> EventSM<'a> {
         }
     }
 
-    pub fn finish(mut self) -> (PersonHoursRaw<'a>, Vec<SoftStatisticsError>) {
+    pub fn finish(mut self) -> (PersonHours<'a>, Vec<SoftStatisticsError>) {
         // sanity check that during evaluation, no staff member is still working
         match self.label {
             EventSMLabel::Working(_) => {

@@ -30,7 +30,7 @@ use stechuhr::{
 };
 
 use crate::{Message, SharedData, StechuhrError, Tab, TAB_PADDING};
-use event_eval::{EventSM, PersonHoursRaw};
+use event_eval::{EventSM, PersonHours};
 use stechuhr::{db, TEXT_SIZE_BIG};
 
 pub struct StatsTab {
@@ -51,45 +51,34 @@ pub enum StatsMessage {
 }
 
 #[derive(Debug, Serialize)]
-struct PersonHours<'a> {
+struct PersonHoursCSV {
     #[serde(rename = "Name")]
-    name: &'a str,
+    name: String,
     #[serde(rename = "Minuten 6 - 22 Uhr")]
     minutes_1: i64,
     #[serde(rename = "Minuten 22 - 24 Uhr")]
     minutes_2: i64,
     #[serde(rename = "Minuten 24 - 6 Uhr")]
     minutes_3: i64,
-    #[serde(rename = "Minuten Gewichtet Total")]
-    minutes_weighted: i64,
-    #[serde(rename = "Zeit Gewichtet Total")]
-    time_weighted: String,
 }
 
-impl<'a> PersonHours<'a> {
-    fn new(
-        name: &'a str,
-        minutes_1: i64,
-        minutes_2: i64,
-        minutes_3: i64,
-        minutes_weighted: i64,
-    ) -> Self {
-        // multiply by precision before rounding to get as many decimal places
-        let time_weighted_hours = minutes_weighted / 60;
-        let time_weighted_minutes = minutes_weighted % 60;
+impl<'a> From<PersonHours<'a>> for PersonHoursCSV {
+    fn from(hours: PersonHours<'a>) -> Self {
+        let [minutes_1, minutes_2, minutes_3] = hours.duration.num_minutes();
 
         Self {
-            name,
+            name: hours.staff_member.name.clone(),
             minutes_1,
             minutes_2,
             minutes_3,
-            minutes_weighted,
-            time_weighted: format!(
-                "{} Stunden und {} Minuten",
-                time_weighted_hours, time_weighted_minutes
-            ),
         }
     }
+}
+
+#[derive(Debug)]
+struct StaffHours {
+    hours: Vec<PersonHoursCSV>,
+    errors: Vec<SoftStatisticsError>,
 }
 
 impl StatsTab {
@@ -106,7 +95,7 @@ impl StatsTab {
     fn generate_hours_for_staff_member<'a>(
         events: &'a Vec<WorkEventT>,
         start_time: NaiveDateTime,
-    ) -> impl 'a + Fn(&StaffMember) -> Result<(PersonHoursRaw, Vec<SoftStatisticsError>), StatisticsError>
+    ) -> impl 'a + Fn(&StaffMember) -> Result<(PersonHours, Vec<SoftStatisticsError>), StatisticsError>
     {
         move |staff_member| {
             let initial_start_time = if staff_member.status == WorkStatus::Working {
@@ -125,32 +114,21 @@ impl StatsTab {
         }
     }
 
-    fn compute_weighted_hours<'a>(hours_raw: PersonHoursRaw<'a>) -> PersonHours<'a> {
-        let [minutes_1, minutes_2, minutes_3, minutes_weigthed] = hours_raw.duration.num_minutes();
-
-        PersonHours::new(
-            &hours_raw.staff_member.name[..],
-            minutes_1,
-            minutes_2,
-            minutes_3,
-            minutes_weigthed,
-        )
-    }
-
-    fn generate_csv(&mut self, shared: &mut SharedData) -> Result<(), StechuhrError> {
+    fn evaluate_hours_for_month(
+        shared: &mut SharedData,
+        date: Date<Local>,
+    ) -> Result<StaffHours, StechuhrError> {
         // start and end time will be first and last day of the selected month, respectively
         let _6am = NaiveTime::from_hms(6, 0, 0);
-        let start_time = self.date.naive_local().first_dom().and_time(_6am);
-        let start_time_local = Local.from_local_datetime(&start_time).unwrap();
+        let start_time = date.naive_local().first_dom().and_time(_6am);
+        let end_time = date.naive_local().last_dom().succ().and_time(_6am);
 
-        let end_time = self.date.naive_local().last_dom().succ().and_time(_6am);
+        let start_time_local = Local.from_local_datetime(&start_time).unwrap();
         let end_time_local = Local.from_local_datetime(&end_time).unwrap();
 
         shared.log_info(format!(
-            "Generiere CSV für {}, zwischen {} und {}",
-            self.date
-                .format_localized("%B %Y", Locale::de_DE)
-                .to_string(),
+            "Starte Auswertung für {}, zwischen {} und {}",
+            date.format_localized("%B %Y", Locale::de_DE).to_string(),
             start_time_local
                 .format_localized("%d. %B (%R)", Locale::de_DE)
                 .to_string(),
@@ -159,47 +137,81 @@ impl StatsTab {
                 .to_string()
         ));
 
-        let previous_events = db::load_events_between(MIN_DATETIME, end_time, &shared.connection);
+        StatsTab::evaluate_hours(shared, start_time, end_time)
+    }
+
+    fn evaluate_hours(
+        shared: &SharedData,
+        start_time: NaiveDateTime,
+        end_time: NaiveDateTime,
+    ) -> Result<StaffHours, StechuhrError> {
+        // Load events before the evaluation period in order to set the correct initial status for staff members.
+        let previous_events = db::load_events_between(MIN_DATETIME, start_time, &shared.connection);
         let events = db::load_events_between(start_time, end_time, &shared.connection);
+
+        // Set the initial status for staff members.
+        // Atm we only do evaluation starting at 6am on the 1st of the month, so no one will be working as we set everyone to non-working at 6am.
         let evaluation_staff = shared
             .staff
             .iter()
+            // turn everyone into DBStaffMember to forget the working status
             .map(|staff_member| DBStaffMember::from(Cow::Borrowed(staff_member)))
-            .map(|staff_member| db::staff_member_compute_status(staff_member, &previous_events))
+            // compute the initial status
+            .map(|staff_member| {
+                db::staff_member_compute_status(staff_member, &previous_events, start_time)
+            })
             .collect::<Vec<_>>();
 
-        let (hours_raw, soft_errors): (Vec<PersonHoursRaw>, Vec<Vec<SoftStatisticsError>>) = evaluation_staff
+        StatsTab::evaluate_hours_for_events(evaluation_staff, events, start_time)
+    }
+
+    fn evaluate_hours_for_events(
+        staff: Vec<StaffMember>,
+        events: Vec<WorkEventT>,
+        start_time: NaiveDateTime,
+    ) -> Result<StaffHours, StechuhrError> {
+        let (hours_raw, soft_errors): (Vec<PersonHours>, Vec<Vec<SoftStatisticsError>>) = staff
             .iter()
             // Associate with each staff member a WorkDuration, which counts the minutes of work time
             .map(StatsTab::generate_hours_for_staff_member(
                 &events, start_time,
             ))
-            .collect::<Result<Vec<(PersonHoursRaw, Vec<SoftStatisticsError>)>, StatisticsError>>()?
+            .collect::<Result<Vec<(PersonHours, Vec<SoftStatisticsError>)>, StatisticsError>>()?
             .into_iter()
             .unzip();
 
-        let staff_hours: Vec<PersonHours> = hours_raw
+        let hours: Vec<PersonHoursCSV> = hours_raw
             .into_iter()
             // transform the calculated WorkDuration into a PersonHours struct for serialization
-            .map(StatsTab::compute_weighted_hours)
+            .map(PersonHoursCSV::from)
             .collect();
 
+        Ok(StaffHours {
+            hours,
+            errors: soft_errors.into_iter().flatten().collect(),
+        })
+    }
+
+    fn generate_csv(
+        shared: &mut SharedData,
+        date: Date<Local>,
+        staff_hours: StaffHours,
+    ) -> Result<(), StechuhrError> {
         // Write everyting into a CSV file.
         let filename = format!(
             "./auswertung/{}.csv",
-            self.date
-                .format_localized("%Y-%m %B", Locale::de_DE)
-                .to_string()
+            date.format_localized("%Y-%m %B", Locale::de_DE).to_string()
         );
+
         let mut wtr = csv::WriterBuilder::new()
             // enable flexible writer since errors are just one field
             .flexible(true)
             .from_path(&filename)?;
 
-        for hours in &staff_hours {
+        for hours in &staff_hours.hours {
             wtr.serialize(hours)?;
         }
-        for error in soft_errors.iter().flatten() {
+        for error in &staff_hours.errors {
             shared.log_error(error.to_string());
             // pad with units to put errors into a separate column
             wtr.serialize(((), (), (), (), (), (), error.to_string()))?;
@@ -286,24 +298,23 @@ impl Tab for StatsTab {
             StatsMessage::ChooseDate => {
                 self.month_picker.reset();
                 self.month_picker.show(true);
-                Ok(())
             }
             StatsMessage::CancelDate => {
                 self.month_picker.show(false);
-                Ok(())
             }
             StatsMessage::SubmitDate(date) => {
                 let naive_date = NaiveDate::from(date);
-                // TODO better way to get the current offset? I should be able to just specify the "Europe/Berlin" Timezone and get it from there
-                let offset = *Local::now().offset();
-                self.date = Date::from_utc(naive_date, offset);
+                self.date = Local.from_local_date(&naive_date).unwrap();
                 self.month_picker.show(false);
-                Ok(())
             }
-            StatsMessage::Generate => self.generate_csv(shared),
+            StatsMessage::Generate => {
+                let hours = StatsTab::evaluate_hours_for_month(shared, self.date)?;
+                StatsTab::generate_csv(shared, self.date, hours)?;
+            }
             // fallthrough to ignore events
-            StatsMessage::HandleEvent(_) => Ok(()),
+            StatsMessage::HandleEvent(_) => (),
         }
+        Ok(())
     }
 }
 

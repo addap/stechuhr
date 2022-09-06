@@ -3,7 +3,7 @@ use crate::models::{
     WorkStatus,
 };
 use crate::schema;
-use chrono::NaiveDateTime;
+use chrono::{Duration, Local, NaiveDateTime, Timelike};
 use diesel::prelude::*;
 use pbkdf2::{password_hash::PasswordVerifier, Pbkdf2};
 use std::borrow::Cow;
@@ -59,9 +59,10 @@ pub fn load_events_between(
 }
 
 pub fn load_state(connection: &SqliteConnection) -> Vec<StaffMember> {
+    let current_time = Local::now().naive_local();
     let loaded_staff = load_staff(connection);
     let events = load_events(connection);
-    let staff = staff_compute_status(loaded_staff, &events);
+    let staff = staff_compute_status(loaded_staff, &events, current_time);
 
     staff
 }
@@ -165,18 +166,34 @@ pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
     return false;
 }
 
-fn staff_compute_status(staff: Vec<DBStaffMember>, events: &[WorkEventT]) -> Vec<StaffMember> {
+fn staff_compute_status(
+    staff: Vec<DBStaffMember>,
+    events: &[WorkEventT],
+    current_time: NaiveDateTime,
+) -> Vec<StaffMember> {
     staff
         .into_iter()
-        .map(move |staff_member| staff_member_compute_status(staff_member, events))
+        .map(move |staff_member| staff_member_compute_status(staff_member, events, current_time))
         .collect()
 }
 
 pub fn staff_member_compute_status(
     staff_member: DBStaffMember,
     events: &[WorkEventT],
+    current_time: NaiveDateTime,
 ) -> StaffMember {
+    // Boundary is either today 6am or yesterday 6am depending on the start_time.
+    let _6am_boundary = if current_time.hour() >= 6 {
+        current_time.with_hour(6).unwrap()
+    } else {
+        (current_time - Duration::days(1)).with_hour(6).unwrap()
+    };
+
     for eventt in events.iter().rev() {
+        if eventt.created_at < _6am_boundary {
+            return staff_member.with_status(WorkStatus::Away);
+        }
+
         match eventt.event {
             WorkEvent::StatusChange(id, _, status) if id == staff_member.uuid() => {
                 return staff_member.with_status(status);
