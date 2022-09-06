@@ -5,6 +5,7 @@ extern crate serde_derive;
 
 mod tabs;
 
+use chrono::TimeZone;
 use chrono::{DateTime, Local, Locale};
 use diesel::prelude::*;
 use dotenv::dotenv;
@@ -112,8 +113,6 @@ impl Stechuhr {
         log_scroll: &'a mut scrollable::State,
         shared: &SharedData,
     ) -> Element<'a, Message> {
-        let offset = *Local::now().offset();
-
         let log_initial = Scrollable::new(log_scroll)
             .on_scroll(|d| {
                 if d == 1.0 {
@@ -127,7 +126,7 @@ impl Stechuhr {
             .padding(5);
 
         let log_view = shared.events.iter().fold(log_initial, |log_view, eventt| {
-            let time = DateTime::<Local>::from_utc(eventt.created_at, offset);
+            let time = Local.from_local_datetime(&eventt.created_at).unwrap();
 
             log_view.push(Text::new(format!(
                 "{}: {}",
@@ -294,12 +293,14 @@ impl Application for Stechuhr {
     // DONE what is '_ in Element<'_, ...>?
     // explicitly elided lifetime. can also be set to 'a
     fn view(&mut self) -> Element<'_, Self::Message> {
+        // log area at the bottom
         let logview = Container::new(Stechuhr::get_logview(&mut self.log_scroll, &self.shared))
             .padding(TAB_PADDING)
             .width(Length::Fill)
             .height(Length::FillPortion(20))
             .style(stechuhr::style::LogviewStyle);
 
+        // tab area at the top
         let tab_bar = TabBar::new(self.active_tab as usize, Message::TabSelected)
             .padding(5)
             .text_size(HEADER_SIZE)
@@ -307,6 +308,7 @@ impl Application for Stechuhr {
             .push(self.management.tab_label())
             .push(self.statistics.tab_label());
 
+        // content of the currently active tab
         let tab_content = match self.active_tab {
             StechuhrTab::Timetrack => self.timetrack.view(&mut self.shared),
             StechuhrTab::Management => self.management.view(&mut self.shared),
@@ -319,8 +321,10 @@ impl Application for Stechuhr {
             .center_x()
             .center_y();
 
+        // complete window content
         let content = Column::new().push(tab_bar).push(tab_content).push(logview);
 
+        // content has to be embedded into global modal
         let modal = Modal::new(&mut self.shared.prompt_modal_state, content, move |state| {
             Card::new(Text::new("Information"), Text::new(&state.msg))
                 .foot(
@@ -328,7 +332,6 @@ impl Application for Stechuhr {
                         .width(Length::Shrink)
                         .on_press(Message::ExitPrompt),
                 )
-                // .max_width(300)
                 .width(Length::Shrink)
                 .on_close(Message::ExitPrompt)
                 .into()
@@ -337,14 +340,17 @@ impl Application for Stechuhr {
         .on_esc(Message::ExitPrompt);
 
         let element: Element<'_, Self::Message> = modal.into();
+        // uncomment to enable debug mode that shows black outlines of containers
         // element.explain(Color::BLACK)
         element
     }
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
+            // count every second
             iced::time::every(std::time::Duration::from_secs(1))
                 .map(|_| Message::Tick(Local::now())),
+            // subscribe to keyboard events
             iced_native::subscription::events_with(|event, status| match (status, event) {
                 /* event when closing the window e.g. mod+Shift+q in i3 */
                 (_, Event::Window(iced_native::window::Event::CloseRequested)) => {
@@ -357,7 +363,8 @@ impl Application for Stechuhr {
                         ..
                     }),
                 ) => Some(Message::ToggleFullscreen),
-                /* we need to be careful to only handle events that have not been caputed elsewhere, otherwise we use the enter again which originally opened the submission modal */
+                /* We need to be careful to only handle events that have not been captured elsewhere.
+                 * Otherwise it can happen that we handle the "enter" again which originally opened the submission modal. */
                 (Status::Ignored, e) => Some(Message::HandleEvent(e)),
                 (_, _) => None,
             }),
@@ -372,6 +379,7 @@ trait Tab {
 
     fn tab_label(&self) -> TabLabel;
 
+    /// Displays a tab with common features.
     fn view(&mut self, shared: &mut SharedData) -> Element<'_, Message> {
         // each tab has its name in the upper right corner
         let title = Text::new(self.title()).size(HEADER_SIZE);
