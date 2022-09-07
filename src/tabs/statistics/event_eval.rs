@@ -359,15 +359,95 @@ mod tests {
         assert_eq!(hours.hours()[0].minutes_3, 0);
     }
 
-    /// evaluate_hours_for_events where staff member is still working at the end.
-    #[test]
-    fn error_worktime_end() {}
-
     /// evaluate_hours_for_events where staff member has two consecutive StatusChange events to Working
     #[test]
-    fn error_worktime_already_working() {}
+    fn error_worktime_already_working() {
+        let raw_staff = vec![DBStaffMember::new(
+            1,
+            String::from("Aaron"),
+            String::from("1111"),
+            String::from("1111111111"),
+            true,
+        )];
+        let events = vec![
+            WorkEventT::new(
+                1,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+            ),
+            WorkEventT::new(
+                2,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 30, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+            ),
+            WorkEventT::new(
+                3,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 59, 59),
+                WorkEvent::_6am,
+            ),
+        ];
+        let previous_events = vec![];
+        let start_time = NaiveDate::from_ymd(2000, 1, 1).and_hms(6, 0, 0);
+
+        let hours =
+            evaluate_hours_for_events(raw_staff, &events, &previous_events, start_time).unwrap();
+
+        assert_eq!(
+            hours.errors()[0],
+            SoftStatisticsError::AlreadyWorking(
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 30, 00),
+                String::from("Aaron")
+            )
+        );
+
+        assert_eq!(hours.hours()[0].minutes_1, 1 * 60);
+        assert_eq!(hours.hours()[0].minutes_2, 0);
+        assert_eq!(hours.hours()[0].minutes_3, 0);
+    }
 
     /// evaluate_hours_for_events where staff member has two consecutive StatusChange events to Away
     #[test]
-    fn error_worktime_already_away() {}
+    fn error_worktime_already_away() {
+        let raw_staff = vec![DBStaffMember::new(
+            1,
+            String::from("Aaron"),
+            String::from("1111"),
+            String::from("1111111111"),
+            true,
+        )];
+        let events = vec![
+            WorkEventT::new(
+                1,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+            ),
+            WorkEventT::new(
+                2,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 30, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Away),
+            ),
+            WorkEventT::new(
+                3,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 45, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Away),
+            ),
+        ];
+        let previous_events = vec![];
+        let start_time = NaiveDate::from_ymd(2000, 1, 1).and_hms(6, 0, 0);
+
+        let hours =
+            evaluate_hours_for_events(raw_staff, &events, &previous_events, start_time).unwrap();
+
+        assert_eq!(
+            hours.errors()[0],
+            SoftStatisticsError::AlreadyAway(
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 45, 00),
+                String::from("Aaron")
+            )
+        );
+
+        assert_eq!(hours.hours()[0].minutes_1, 30);
+        assert_eq!(hours.hours()[0].minutes_2, 0);
+        assert_eq!(hours.hours()[0].minutes_3, 0);
+    }
 }

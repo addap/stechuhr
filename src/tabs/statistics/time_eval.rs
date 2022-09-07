@@ -141,7 +141,7 @@ impl WorkDuration {
         assert!(start_time < end_time);
 
         let current_seconds = start_time.num_seconds_from_midnight() as i64;
-        // Add one second since we're including the end.
+        // add one second since we're including the end.
         let mut seconds_remaining = end_time.signed_duration_since(start_time).num_seconds() + 1;
         let mut sm = DurationSM::new(current_seconds);
 
