@@ -1,6 +1,7 @@
 //! Tab to add/change/get info about users
 use std::{error, fmt, mem};
 
+use chrono::Local;
 use iced::{
     alignment::{Horizontal, Vertical},
     button, keyboard, scrollable, text_input, Alignment, Button, Checkbox, Column, Container,
@@ -145,7 +146,7 @@ impl StaffState {
         staff_member.is_visible = is_visible;
 
         // save in db
-        db::save_staff_member(staff_member, &shared.connection)?;
+        db::save_staff_member(staff_member, &mut shared.connection)?;
 
         let success_message = format!("Mitarbeiter {} erfolgreich geändert.", name);
         shared.log_info(success_message);
@@ -162,7 +163,7 @@ impl StaffState {
     ) -> Result<(), StechuhrError> {
         // save in DB
         let new_staff_member = NewStaffMember::new(new_name, new_pin, new_cardid)?;
-        let new_staff_member = db::insert_staff(new_staff_member, &shared.connection)?;
+        let new_staff_member = db::insert_staff(new_staff_member, &mut shared.connection)?;
 
         self.member_states.push(
             StaffMemberState::default()
@@ -189,7 +190,7 @@ impl StaffState {
         self.member_states.remove(idx);
         let staff_member = shared.staff.remove(idx);
 
-        db::delete_staff_member(staff_member, &shared.connection)?;
+        db::delete_staff_member(staff_member, &mut shared.connection)?;
 
         Ok(())
     }
@@ -664,7 +665,7 @@ impl Tab for ManagementTab {
                 self.admin_password_value = password;
             }
             ManagementMessage::SubmitPassword => {
-                if db::verify_password(self.admin_password_value.trim(), &shared.connection) {
+                if db::verify_password(self.admin_password_value.trim(), &mut shared.connection) {
                     self.admin_password_value.clear();
                     self.auth();
                 } else {
@@ -748,23 +749,12 @@ impl Tab for ManagementTab {
                 shared.prompt_message(msg);
             }
             ManagementMessage::EndEvent => {
-                let sign_off_events: Vec<_> = shared
-                    .staff
-                    .iter_mut()
-                    .filter(|staff_member| staff_member.status == WorkStatus::Working)
-                    .map(|staff_member| {
-                        let uuid = staff_member.uuid();
-                        let name = staff_member.name.clone();
-                        let new_status = WorkStatus::Away;
-                        staff_member.status = new_status;
-                        WorkEvent::StatusChange(uuid, name, new_status)
-                    })
-                    .collect();
-
-                for event in sign_off_events.into_iter() {
-                    shared.log_event(event);
+                let sign_off_time = Local::now().naive_local();
+                let sign_off_events = shared.sign_off_all_staff(sign_off_time);
+                for eventt in sign_off_events.into_iter() {
+                    shared.log_eventt(eventt);
                 }
-                shared.log_event(WorkEvent::EventOver);
+                shared.create_event(WorkEvent::EventOver);
             }
             ManagementMessage::GenericSubmit => {
                 let (focus_idx, _) = self.collect_inputs();

@@ -2,7 +2,7 @@ use crate::icons::{self, FONT_EMOJIONE, TEXT_SIZE_EMOJI};
 use crate::schema::{events, passwords, staff};
 use chrono::{Local, NaiveDateTime};
 use diesel::deserialize::{self, FromSql, Queryable};
-use diesel::serialize::{self, Output, ToSql};
+use diesel::serialize::{self, IsNull, Output, ToSql};
 use diesel::sql_types::*;
 use iced::Color;
 use pbkdf2::password_hash::PasswordHash as PBKDF2Hash;
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_lexpr;
 use std::borrow::Cow;
 use std::str::FromStr;
-use std::{error, fmt, io};
+use std::{cmp, error, fmt};
 
 #[derive(Debug, Clone)]
 pub enum ModelError {
@@ -35,7 +35,9 @@ impl fmt::Display for ModelError {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize,
+)]
 #[sql_type = "Bool"]
 pub enum WorkStatus {
     Away,
@@ -94,12 +96,17 @@ impl fmt::Display for WorkStatus {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Clone, AsExpression, FromSqlRow, Serialize, Deserialize,
+)]
 #[sql_type = "Text"]
 pub enum WorkEvent {
     StatusChange(i32, String, WorkStatus),
+    #[deprecated]
     EventStart,
+    #[deprecated]
     EventOver,
+    _6am,
     Info(String),
     Error(String),
 }
@@ -112,6 +119,7 @@ impl fmt::Display for WorkEvent {
             }
             WorkEvent::EventStart => String::from("Event gestartet"),
             WorkEvent::EventOver => String::from("Event gestoppt"),
+            WorkEvent::_6am => String::from("6 Uhr morgens"),
             WorkEvent::Info(msg) => format!("Info: {}", msg),
             WorkEvent::Error(msg) => format!("Error: {}", msg),
         };
@@ -120,7 +128,8 @@ impl fmt::Display for WorkEvent {
     }
 }
 
-#[derive(Debug, Clone, AsExpression, Queryable)]
+// derive AsExpression
+#[derive(Debug, Clone, Queryable, PartialEq, Eq, PartialOrd)]
 pub struct WorkEventT {
     #[allow(unused)]
     id: i32,
@@ -128,8 +137,20 @@ pub struct WorkEventT {
     pub event: WorkEvent,
 }
 
-#[derive(Debug, Clone, Insertable, AsExpression)]
-#[table_name = "events"]
+impl Ord for WorkEventT {
+    // Reverse ordering for timestamp so that the max-heap gives us the earliest events first.
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        other
+            .created_at
+            .cmp(&self.created_at)
+            // Can stop comparing after id since two different items coming from the db will always have different ids.
+            .then(self.id.cmp(&other.id))
+    }
+}
+
+// derive AsExpression
+#[derive(Debug, Clone, Insertable)]
+#[diesel(table_name = events)]
 pub struct NewWorkEventT {
     created_at: NaiveDateTime,
     #[column_name = "event_json"]
@@ -137,7 +158,11 @@ pub struct NewWorkEventT {
 }
 
 impl NewWorkEventT {
-    pub fn new(event: WorkEvent) -> Self {
+    pub fn new(created_at: NaiveDateTime, event: WorkEvent) -> Self {
+        NewWorkEventT { created_at, event }
+    }
+
+    pub fn now(event: WorkEvent) -> Self {
         NewWorkEventT {
             created_at: Local::now().naive_local(),
             event,
@@ -179,7 +204,8 @@ impl FromStr for Cardid {
 // using sql_type annotation as described below does not work because it is not found
 // https://github.com/diesel-rs/diesel/blob/1.4.x/guide_drafts/trait_derives.md#aschangeset
 // https://noyez.gitlab.io/post/2018-08-05-a-small-custom-bool-type-in-diesel/
-#[derive(Debug, Clone, AsExpression, AsChangeset, Identifiable)]
+// derive AsChangeset
+#[derive(Debug, Clone, AsChangeset, Identifiable)]
 #[table_name = "staff"]
 #[primary_key(uuid)]
 pub struct DBStaffMember {
@@ -299,7 +325,8 @@ impl NewStaffMember {
 }
 
 /// A pbkdf2 password hash string in PHC format.
-#[derive(Debug, AsExpression, Insertable)]
+// derive AsExpression
+#[derive(Debug, Insertable)]
 #[table_name = "passwords"]
 pub struct PasswordHash {
     phc: String,
@@ -321,50 +348,50 @@ impl PasswordHash {
 
 /* Build my own queryable to parse the WorkStatus of a StaffMember.
  * from https://docs.diesel.rs/diesel/deserialize/trait.Queryable.html */
-use diesel::backend::Backend;
+use diesel::backend;
 
 impl<DB> Queryable<staff::SqlType, DB> for DBStaffMember
 where
-    DB: Backend,
+    DB: backend::Backend,
     bool: FromSql<Bool, DB>,
     String: FromSql<Text, DB>,
     i32: FromSql<Integer, DB>,
 {
     type Row = (i32, String, Option<String>, Option<String>, bool, bool);
 
-    fn build(row: Self::Row) -> Self {
+    fn build(row: Self::Row) -> diesel::deserialize::Result<Self> {
         let pin = row.2.unwrap();
         let cardid = row.3.unwrap();
 
-        Self {
+        Ok(Self {
             uuid: row.0,
             name: row.1,
             pin,
             cardid,
             is_visible: row.4,
-        }
+        })
     }
 }
 
 impl<DB> Queryable<passwords::SqlType, DB> for PasswordHash
 where
-    DB: Backend,
+    DB: backend::Backend,
     i32: FromSql<Integer, DB>,
     String: FromSql<Text, DB>,
 {
     type Row = (i32, String);
 
-    fn build(row: Self::Row) -> Self {
-        PasswordHash::new(row.1)
+    fn build(row: Self::Row) -> diesel::deserialize::Result<Self> {
+        Ok(PasswordHash::new(row.1))
     }
 }
 
 impl<DB> ToSql<Bool, DB> for WorkStatus
 where
-    DB: Backend,
+    DB: backend::Backend,
     bool: ToSql<Bool, DB>,
 {
-    fn to_sql<W: std::io::Write>(&self, out: &mut serialize::Output<W, DB>) -> serialize::Result {
+    fn to_sql(&self, out: &mut serialize::Output<DB>) -> serialize::Result {
         match *self {
             WorkStatus::Away => ToSql::<Bool, DB>::to_sql(&false, out),
             WorkStatus::Working => ToSql::<Bool, DB>::to_sql(&true, out),
@@ -374,34 +401,32 @@ where
 
 impl<DB> FromSql<Bool, DB> for WorkStatus
 where
-    DB: Backend,
+    DB: backend::Backend,
     bool: FromSql<Bool, DB>,
 {
-    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+    fn from_sql(bytes: backend::RawValue<'_, DB>) -> deserialize::Result<Self> {
         let value = bool::from_sql(bytes)?;
         Ok(WorkStatus::from_bool(value))
     }
 }
 
-impl<DB> ToSql<Text, DB> for WorkEvent
+impl ToSql<Text, diesel::sqlite::Sqlite> for WorkEvent
 where
-    DB: Backend,
+    String: ToSql<Text, diesel::sqlite::Sqlite>,
 {
-    fn to_sql<W>(&self, out: &mut Output<W, DB>) -> serialize::Result
-    where
-        W: io::Write,
-    {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, diesel::sqlite::Sqlite>) -> serialize::Result {
         let value = serde_lexpr::to_string(self)?;
-        <String as ToSql<Text, DB>>::to_sql(&value, out)
+        out.set_value(value);
+        Ok(IsNull::No)
     }
 }
 
 impl<DB> FromSql<Text, DB> for WorkEvent
 where
-    DB: Backend,
+    DB: backend::Backend,
     String: FromSql<Text, DB>,
 {
-    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+    fn from_sql(bytes: backend::RawValue<'_, DB>) -> deserialize::Result<Self> {
         let value = String::from_sql(bytes)?;
         Ok(serde_lexpr::from_str(&value)?)
     }

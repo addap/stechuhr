@@ -1,8 +1,6 @@
-use std::cmp::min;
-
-use chrono::{Duration, NaiveDateTime, Timelike};
-
 use super::StatisticsError;
+use chrono::{Duration, NaiveDateTime, Timelike};
+use std::cmp::min;
 
 type Secs = i64;
 const SECS_PER_HOUR: Secs = 60 * 60;

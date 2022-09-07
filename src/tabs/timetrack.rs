@@ -58,7 +58,7 @@ impl TimetrackTab {
             let name = staff_member.name.clone();
             let new_status = staff_member.status.toggle();
             staff_member.status = new_status;
-            shared.log_event(WorkEvent::StatusChange(break_uuid, name, new_status));
+            shared.create_event(WorkEvent::StatusChange(break_uuid, name, new_status));
             self.break_modal_state.show(false);
             self.break_input_uuid = None;
             self.break_input_value.clear();

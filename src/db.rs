@@ -3,7 +3,7 @@ use crate::models::{
     WorkStatus,
 };
 use crate::schema;
-use chrono::{Duration, Local, NaiveDateTime, Timelike};
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use pbkdf2::{password_hash::PasswordVerifier, Pbkdf2};
 use std::borrow::Cow;
@@ -20,7 +20,7 @@ pub fn establish_connection() -> SqliteConnection {
 ///*************************/
 
 /// Load a staff member from the database.
-fn load_staff(connection: &SqliteConnection) -> Vec<DBStaffMember> {
+fn load_staff(connection: &mut SqliteConnection) -> Vec<DBStaffMember> {
     use schema::staff::dsl::*;
     staff
         .filter(is_active.eq(true))
@@ -29,7 +29,7 @@ fn load_staff(connection: &SqliteConnection) -> Vec<DBStaffMember> {
 }
 
 /// Load all events from the database.
-fn load_events(connection: &SqliteConnection) -> Vec<WorkEventT> {
+fn load_events(connection: &mut SqliteConnection) -> Vec<WorkEventT> {
     use schema::events::dsl::*;
 
     let evts = events
@@ -44,7 +44,7 @@ fn load_events(connection: &SqliteConnection) -> Vec<WorkEventT> {
 pub fn load_events_between(
     start_time: NaiveDateTime,
     end_time: NaiveDateTime,
-    connection: &SqliteConnection,
+    connection: &mut SqliteConnection,
 ) -> Vec<WorkEventT> {
     use schema::events::dsl::*;
 
@@ -58,11 +58,10 @@ pub fn load_events_between(
     evts
 }
 
-pub fn load_state(connection: &SqliteConnection) -> Vec<StaffMember> {
-    let current_time = Local::now().naive_local();
+pub fn load_state(connection: &mut SqliteConnection) -> Vec<StaffMember> {
     let loaded_staff = load_staff(connection);
     let events = load_events(connection);
-    let staff = staff_compute_status(loaded_staff, &events, current_time);
+    let staff = staff_compute_status(loaded_staff, events.as_slice());
 
     staff
 }
@@ -74,7 +73,7 @@ pub fn load_state(connection: &SqliteConnection) -> Vec<StaffMember> {
 /// Save a single staff member into the database.
 pub fn save_staff_member(
     staff_member: &StaffMember,
-    connection: &SqliteConnection,
+    connection: &mut SqliteConnection,
 ) -> QueryResult<()> {
     let staff_member = DBStaffMember::from(Cow::Borrowed(staff_member));
 
@@ -84,7 +83,7 @@ pub fn save_staff_member(
     Ok(())
 }
 
-pub fn save_staff(staff_v: &[StaffMember], connection: &SqliteConnection) -> QueryResult<()> {
+pub fn save_staff(staff_v: &[StaffMember], connection: &mut SqliteConnection) -> QueryResult<()> {
     for staff_member in staff_v {
         save_staff_member(staff_member, connection)?;
     }
@@ -97,7 +96,7 @@ pub fn save_staff(staff_v: &[StaffMember], connection: &SqliteConnection) -> Que
 
 pub fn insert_staff(
     staff_member: NewStaffMember,
-    connection: &SqliteConnection,
+    connection: &mut SqliteConnection,
 ) -> QueryResult<StaffMember> {
     use schema::staff::dsl::*;
 
@@ -115,7 +114,7 @@ pub fn insert_staff(
     Ok(newly_inserted.with_status(WorkStatus::Away))
 }
 
-pub fn insert_event(new_event: &NewWorkEventT, connection: &SqliteConnection) -> WorkEventT {
+pub fn insert_event(new_event: &NewWorkEventT, connection: &mut SqliteConnection) -> WorkEventT {
     use schema::events::dsl::*;
 
     diesel::insert_into(events)
@@ -134,7 +133,7 @@ pub fn insert_event(new_event: &NewWorkEventT, connection: &SqliteConnection) ->
     newly_inserted
 }
 
-pub fn insert_password(new_password: PasswordHash, connection: &SqliteConnection) {
+pub fn insert_password(new_password: PasswordHash, connection: &mut SqliteConnection) {
     use schema::passwords::dsl::*;
 
     diesel::insert_into(passwords)
@@ -147,7 +146,7 @@ pub fn insert_password(new_password: PasswordHash, connection: &SqliteConnection
 /// Other Queries
 ///*************************/
 
-pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
+pub fn verify_password(password: &str, connection: &mut SqliteConnection) -> bool {
     use schema::passwords::dsl::*;
 
     let pws = passwords
@@ -166,39 +165,23 @@ pub fn verify_password(password: &str, connection: &SqliteConnection) -> bool {
     return false;
 }
 
-fn staff_compute_status(
-    staff: Vec<DBStaffMember>,
-    events: &[WorkEventT],
-    current_time: NaiveDateTime,
-) -> Vec<StaffMember> {
+fn staff_compute_status(staff: Vec<DBStaffMember>, events: &[WorkEventT]) -> Vec<StaffMember> {
     staff
         .into_iter()
-        .map(move |staff_member| staff_member_compute_status(staff_member, events, current_time))
+        .map(move |staff_member| staff_member_compute_status(staff_member, events))
         .collect()
 }
 
 pub fn staff_member_compute_status(
     staff_member: DBStaffMember,
     events: &[WorkEventT],
-    current_time: NaiveDateTime,
 ) -> StaffMember {
-    // Boundary is either today 6am or yesterday 6am depending on the start_time.
-    let _6am_boundary = if current_time.hour() >= 6 {
-        current_time.with_hour(6).unwrap()
-    } else {
-        (current_time - Duration::days(1)).with_hour(6).unwrap()
-    };
-
     for eventt in events.iter().rev() {
-        if eventt.created_at < _6am_boundary {
-            return staff_member.with_status(WorkStatus::Away);
-        }
-
         match eventt.event {
             WorkEvent::StatusChange(id, _, status) if id == staff_member.uuid() => {
                 return staff_member.with_status(status);
             }
-            WorkEvent::EventOver => {
+            WorkEvent::EventOver | WorkEvent::_6am => {
                 return staff_member.with_status(WorkStatus::Away);
             }
             _ => {}
@@ -210,7 +193,7 @@ pub fn staff_member_compute_status(
 
 pub fn delete_staff_member(
     staff_member: StaffMember,
-    connection: &SqliteConnection,
+    connection: &mut SqliteConnection,
 ) -> QueryResult<()> {
     use schema::staff::dsl::*;
 

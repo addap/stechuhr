@@ -11,9 +11,10 @@ iced = { version = "0.4", features = ["tokio", "glow"] }
 iced_native = { version = "0.5" }
 # compiled with commit 045e16df2706b938ebf657ad2f18a08f48496bcf
 iced_aw = { git = "https://github.com/iced-rs/iced_aw", branch = "main", default-features = false, features = ["modal", "colors", "card", "tabs", "date_picker", "tab_bar"] }
-chrono = { version = "0.4", features = ["unstable-locales", "serde"] }
+chrono = { version = "^0.4", features = ["unstable-locales", "serde"] }
 time = { version = "0.3", features = ["local-offset"] }
-diesel = { version = "1.4", features = ["sqlite", "chrono"] }
+diesel = { version = "2.0", features = ["sqlite", "chrono"] }
+diesel_migrations = "2.0"
 dotenv = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"

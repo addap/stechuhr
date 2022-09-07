@@ -5,8 +5,8 @@ extern crate serde_derive;
 
 mod tabs;
 
-use chrono::TimeZone;
-use chrono::{DateTime, Local, Locale};
+use chrono::{DateTime, Local, Locale, NaiveTime};
+use chrono::{NaiveDateTime, TimeZone};
 use diesel::prelude::*;
 use dotenv::dotenv;
 use iced::alignment::Vertical;
@@ -54,22 +54,27 @@ pub struct SharedData {
 
 impl SharedData {
     /// Log a WorkEvent in the scrollbar area at the bottom and also persist it to the DB.
-    fn log_event(&mut self, event: WorkEvent) {
-        let new_eventt = NewWorkEventT::new(event);
-        let eventt = db::insert_event(&new_eventt, &self.connection);
+    fn create_event(&mut self, event: WorkEvent) {
+        let new_eventt = NewWorkEventT::now(event);
+        self.log_eventt(new_eventt);
+    }
+
+    fn log_eventt(&mut self, new_eventt: NewWorkEventT) {
+        let eventt = db::insert_event(&new_eventt, &mut self.connection);
+        // This breaks the ordering of events (since we have the pregenerated 6am boundaries in the future)
         self.events.push(eventt);
     }
 
     /// Log an information event.
     /// TODO remove when logging to journal
     fn log_info(&mut self, msg: String) {
-        self.log_event(WorkEvent::Info(msg));
+        self.create_event(WorkEvent::Info(msg));
     }
 
     /// Log an error event.
     /// TODO remove when logging to journal
     fn log_error(&mut self, e: String) {
-        self.log_event(WorkEvent::Error(e));
+        self.create_event(WorkEvent::Error(e));
     }
 
     /// Open a modal to more prominently show some piece of information.
@@ -87,6 +92,24 @@ impl SharedData {
             self.prompt_message(e.clone());
             self.log_error(e);
         }
+    }
+
+    /// Set every staff member that is working to "Away" and corresponding StatusChange events.
+    fn sign_off_all_staff(&mut self, sign_off_time: NaiveDateTime) -> Vec<NewWorkEventT> {
+        self.staff
+            .iter_mut()
+            .filter(|staff_member| staff_member.status == WorkStatus::Working)
+            .map(|staff_member| {
+                let uuid = staff_member.uuid();
+                let name = staff_member.name.clone();
+                let new_status = WorkStatus::Away;
+                staff_member.status = new_status;
+                NewWorkEventT::new(
+                    sign_off_time,
+                    WorkEvent::StatusChange(uuid, name, new_status),
+                )
+            })
+            .collect()
     }
 }
 
@@ -186,10 +209,10 @@ impl Application for Stechuhr {
         self.window_mode
     }
 
-    fn new(connection: SqliteConnection) -> (Self, Command<Message>) {
-        let staff = db::load_state(&connection);
+    fn new(mut connection: SqliteConnection) -> (Self, Command<Message>) {
+        let staff = db::load_state(&mut connection);
         let management = ManagementTab::new(&staff);
-        // log should follow new events by default
+        // Log should follow new events by default.
         let mut log_scroll = scrollable::State::default();
         log_scroll.snap_to(1.0);
 
@@ -221,8 +244,11 @@ impl Application for Stechuhr {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Tick(local_time) => {
-                if local_time > self.shared.current_time {
-                    self.shared.current_time = local_time;
+                self.shared.current_time = local_time;
+
+                // If it's just before 6am, sign off all staff. The 6am barrier event will already exist so we don't have to create it again.
+                if local_time.time() == NaiveTime::from_hms(5, 59, 59) {
+                    let _ = self.shared.sign_off_all_staff(local_time.naive_local());
                 }
             }
             Message::ExitApplication => {
@@ -236,7 +262,7 @@ impl Application for Stechuhr {
                         "Es sind noch Personen am Arbeiten. Bitte zuerst alle auf \"Pause\" stellen oder das Event beenden.",
                     ));
                 } else {
-                    match db::save_staff(&self.shared.staff, &self.shared.connection) {
+                    match db::save_staff(&self.shared.staff, &mut self.shared.connection) {
                         Ok(()) => self.should_exit = true,
                         Err(e) => self.shared.handle_result(Err(StechuhrError::Diesel(e))),
                     }
@@ -479,3 +505,95 @@ impl fmt::Display for StechuhrError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use diesel::Connection;
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+
+    fn setup_db() -> diesel::SqliteConnection {
+        let connection_url = ":memory:";
+        let mut connection = diesel::SqliteConnection::establish(&connection_url).unwrap();
+        connection.begin_test_transaction().unwrap();
+
+        connection.run_pending_migrations(MIGRATIONS).unwrap();
+        connection
+    }
+
+    /// Sanity check that test DB was not changed.
+    #[test]
+    fn check_db_hash() {
+        let mut connection = setup_db();
+    }
+
+    /// Create Stechuhr application and simulate passing the 6am barrier.
+    #[test]
+    fn simulate_6am() {}
+
+    /// Create Stechuhr application and load staff that is already working.
+    #[test]
+    fn load_working() {}
+
+    /// Create Stechuhr application and load staff that forgot to sign off before 6am.
+    #[test]
+    fn load_6am() {}
+}
+
+// mod dsj {
+//     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+//     use std::error::Error;
+//     include!("../../../diesel/src/doctest_setup.rs");
+
+//     #[cfg(feature = "postgres")]
+//     fn migration_connection() -> diesel::PgConnection {
+//         let connection_url = database_url_from_env("PG_DATABASE_URL");
+//         let mut conn = diesel::PgConnection::establish(&connection_url).unwrap();
+//         conn.begin_test_transaction().unwrap();
+//         conn
+//     }
+
+//     #[cfg(feature = "sqlite")]
+//     fn migration_connection() -> diesel::SqliteConnection {
+//         let connection_url = database_url_from_env("SQLITE_DATABASE_URL");
+//         let mut conn = diesel::SqliteConnection::establish(&connection_url).unwrap();
+//         conn.begin_test_transaction().unwrap();
+//         conn
+//     }
+
+//     #[cfg(feature = "mysql")]
+//     fn migration_connection() -> diesel::MysqlConnection {
+//         let connection_url = database_url_from_env("MYSQL_DATABASE_URL");
+//         let mut conn = diesel::MysqlConnection::establish(&connection_url).unwrap();
+//         conn
+//     }
+
+//     #[cfg(feature = "postgres")]
+//     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../../migrations/postgresql");
+//     #[cfg(all(feature = "mysql", not(feature = "postgres")))]
+//     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../../migrations/mysql");
+//     #[cfg(all(feature = "sqlite", not(any(feature = "postgres", feature = "mysql"))))]
+//     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../../migrations/sqlite");
+
+//     fn main() {
+//         let connection = &mut migration_connection();
+//         run_migrations(connection).unwrap();
+//     }
+
+//     fn run_migrations(
+//         connection: &mut impl MigrationHarness<DB>,
+//     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+//         #[cfg(feature = "mysql")]
+//         connection.revert_all_migrations(MIGRATIONS)?;
+
+//         // This will run the necessary migrations.
+//         //
+//         // See the documentation for `MigrationHarness` for
+//         // all available methods.
+//         connection.run_pending_migrations(MIGRATIONS)?;
+
+//         Ok(())
+//     }
+// }

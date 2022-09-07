@@ -27,8 +27,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let password_hash = Pbkdf2.hash_password(password.as_ref(), &salt)?.to_string();
     println!("{}", password_hash);
 
-    let connection = db::establish_connection();
-    db::insert_password(PasswordHash::new(password_hash), &connection);
+    let mut connection = db::establish_connection();
+    db::insert_password(PasswordHash::new(password_hash), &mut connection);
 
     // Verify password against PHC string
     // let parsed_hash = PasswordHash::new(&password_hash)?;
