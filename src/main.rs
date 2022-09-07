@@ -60,7 +60,7 @@ impl SharedData {
     }
 
     fn log_eventt(&mut self, new_eventt: NewWorkEventT) {
-        let eventt = db::insert_event(&new_eventt, &mut self.connection);
+        let eventt = db::insert_event(new_eventt, &mut self.connection);
         // This breaks the ordering of events (since we have the pregenerated 6am boundaries in the future)
         self.events.push(eventt);
     }
@@ -210,7 +210,7 @@ impl Application for Stechuhr {
     }
 
     fn new(mut connection: SqliteConnection) -> (Self, Command<Message>) {
-        let staff = db::load_state(&mut connection);
+        let staff = db::load_state(Local::now().naive_local(), &mut connection);
         let management = ManagementTab::new(&staff);
         // Log should follow new events by default.
         let mut log_scroll = scrollable::State::default();
@@ -509,91 +509,184 @@ impl fmt::Display for StechuhrError {
 #[cfg(test)]
 mod tests {
 
+    use chrono::{Local, NaiveDate, NaiveTime, TimeZone};
     use diesel::Connection;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+    use iced::Application;
+    use stechuhr::{
+        db,
+        models::{NewStaffMember, NewWorkEventT, StaffMember, WorkEvent, WorkStatus},
+    };
+
+    use crate::{tabs::timetrack::TimetrackMessage, Message, Stechuhr};
 
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-    fn setup_db() -> diesel::SqliteConnection {
+    fn setup_testdb() -> (diesel::SqliteConnection, Vec<StaffMember>) {
         let connection_url = ":memory:";
         let mut connection = diesel::SqliteConnection::establish(&connection_url).unwrap();
         connection.begin_test_transaction().unwrap();
 
+        // run migrations to setup tables
         connection.run_pending_migrations(MIGRATIONS).unwrap();
-        connection
+
+        // insert some test data
+        let mut staff = Vec::new();
+        staff.push(
+            db::insert_staff(
+                NewStaffMember::new(
+                    String::from("Aaron"),
+                    String::from("1111"),
+                    String::from("1111111111"),
+                )
+                .unwrap(),
+                &mut connection,
+            )
+            .unwrap(),
+        );
+        staff.push(
+            db::insert_staff(
+                NewStaffMember::new(
+                    String::from("Beeron"),
+                    String::from("2222"),
+                    String::from("2222222222"),
+                )
+                .unwrap(),
+                &mut connection,
+            )
+            .unwrap(),
+        );
+
+        let _55959am = NaiveTime::from_hms(5, 59, 59);
+        db::insert_event(
+            NewWorkEventT::new(
+                NaiveDate::from_ymd(2000, 1, 1).and_time(_55959am),
+                WorkEvent::_6am,
+            ),
+            &mut connection,
+        );
+        db::insert_event(
+            NewWorkEventT::new(
+                NaiveDate::from_ymd(2000, 1, 2).and_time(_55959am),
+                WorkEvent::_6am,
+            ),
+            &mut connection,
+        );
+
+        (connection, staff)
     }
 
-    /// Sanity check that test DB was not changed.
+    /// Create Stechuhr application and simulate starting work.
     #[test]
-    fn check_db_hash() {
-        let mut connection = setup_db();
+    fn simulate_start_work() {
+        let (connection, _) = setup_testdb();
+
+        let (mut app, _) = Stechuhr::new(connection);
+
+        assert_eq!(app.shared.staff[0].status, WorkStatus::Away);
+        assert_eq!(app.shared.staff[1].status, WorkStatus::Away);
+
+        app.update(Message::Timetrack(TimetrackMessage::ChangeBreakInput(
+            String::from("1111"),
+        )));
+        app.update(Message::Timetrack(TimetrackMessage::SubmitBreakInput));
+        app.update(Message::Timetrack(
+            TimetrackMessage::ConfirmSubmitBreakInput,
+        ));
+
+        assert_eq!(app.shared.staff[0].status, WorkStatus::Working);
+        assert_eq!(app.shared.staff[1].status, WorkStatus::Away);
+    }
+
+    /// Create Stechuhr application and simulate ending work.
+    #[test]
+    fn simulate_end_work() {
+        let (connection, _) = setup_testdb();
+
+        let (mut app, _) = Stechuhr::new(connection);
+
+        app.shared.staff[0].status = WorkStatus::Working;
+
+        app.update(Message::Timetrack(TimetrackMessage::ChangeBreakInput(
+            String::from("1111"),
+        )));
+        app.update(Message::Timetrack(TimetrackMessage::SubmitBreakInput));
+        app.update(Message::Timetrack(
+            TimetrackMessage::ConfirmSubmitBreakInput,
+        ));
+
+        assert_eq!(app.shared.staff[0].status, WorkStatus::Away);
+        assert_eq!(app.shared.staff[1].status, WorkStatus::Away);
     }
 
     /// Create Stechuhr application and simulate passing the 6am barrier.
     #[test]
-    fn simulate_6am() {}
+    fn simulate_6am() {
+        let (connection, _) = setup_testdb();
+
+        let (mut app, _) = Stechuhr::new(connection);
+
+        app.shared.staff[0].status = WorkStatus::Working;
+
+        app.update(Message::Tick(
+            Local
+                .from_local_datetime(&NaiveDate::from_ymd(2000, 1, 1).and_hms(5, 59, 59))
+                .unwrap(),
+        ));
+
+        assert_eq!(app.shared.staff[0].status, WorkStatus::Away);
+        assert_eq!(app.shared.staff[1].status, WorkStatus::Away);
+    }
 
     /// Create Stechuhr application and load staff that is already working.
     #[test]
-    fn load_working() {}
+    fn load_working() {
+        let (mut connection, staff) = setup_testdb();
+
+        db::insert_event(
+            NewWorkEventT::new(
+                NaiveDate::from_ymd(2000, 1, 1).and_hms(5, 0, 0),
+                WorkEvent::StatusChange(
+                    staff[0].uuid(),
+                    staff[0].name.clone(),
+                    WorkStatus::Working,
+                ),
+            ),
+            &mut connection,
+        );
+
+        let loaded_staff = db::load_state(
+            NaiveDate::from_ymd(2000, 1, 1).and_hms(5, 30, 0),
+            &mut connection,
+        );
+
+        assert_eq!(loaded_staff[0].status, WorkStatus::Working);
+        assert_eq!(loaded_staff[1].status, WorkStatus::Away);
+    }
 
     /// Create Stechuhr application and load staff that forgot to sign off before 6am.
     #[test]
-    fn load_6am() {}
+    fn load_6am() {
+        let (mut connection, staff) = setup_testdb();
+
+        db::insert_event(
+            NewWorkEventT::new(
+                NaiveDate::from_ymd(2000, 1, 1).and_hms(5, 0, 0),
+                WorkEvent::StatusChange(
+                    staff[0].uuid(),
+                    staff[0].name.clone(),
+                    WorkStatus::Working,
+                ),
+            ),
+            &mut connection,
+        );
+
+        let loaded_staff = db::load_state(
+            NaiveDate::from_ymd(2000, 1, 1).and_hms(6, 30, 0),
+            &mut connection,
+        );
+
+        assert_eq!(loaded_staff[0].status, WorkStatus::Away);
+        assert_eq!(loaded_staff[1].status, WorkStatus::Away);
+    }
 }
-
-// mod dsj {
-//     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-//     use std::error::Error;
-//     include!("../../../diesel/src/doctest_setup.rs");
-
-//     #[cfg(feature = "postgres")]
-//     fn migration_connection() -> diesel::PgConnection {
-//         let connection_url = database_url_from_env("PG_DATABASE_URL");
-//         let mut conn = diesel::PgConnection::establish(&connection_url).unwrap();
-//         conn.begin_test_transaction().unwrap();
-//         conn
-//     }
-
-//     #[cfg(feature = "sqlite")]
-//     fn migration_connection() -> diesel::SqliteConnection {
-//         let connection_url = database_url_from_env("SQLITE_DATABASE_URL");
-//         let mut conn = diesel::SqliteConnection::establish(&connection_url).unwrap();
-//         conn.begin_test_transaction().unwrap();
-//         conn
-//     }
-
-//     #[cfg(feature = "mysql")]
-//     fn migration_connection() -> diesel::MysqlConnection {
-//         let connection_url = database_url_from_env("MYSQL_DATABASE_URL");
-//         let mut conn = diesel::MysqlConnection::establish(&connection_url).unwrap();
-//         conn
-//     }
-
-//     #[cfg(feature = "postgres")]
-//     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../../migrations/postgresql");
-//     #[cfg(all(feature = "mysql", not(feature = "postgres")))]
-//     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../../migrations/mysql");
-//     #[cfg(all(feature = "sqlite", not(any(feature = "postgres", feature = "mysql"))))]
-//     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../../migrations/sqlite");
-
-//     fn main() {
-//         let connection = &mut migration_connection();
-//         run_migrations(connection).unwrap();
-//     }
-
-//     fn run_migrations(
-//         connection: &mut impl MigrationHarness<DB>,
-//     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-//         #[cfg(feature = "mysql")]
-//         connection.revert_all_migrations(MIGRATIONS)?;
-
-//         // This will run the necessary migrations.
-//         //
-//         // See the documentation for `MigrationHarness` for
-//         // all available methods.
-//         connection.run_pending_migrations(MIGRATIONS)?;
-
-//         Ok(())
-//     }
-// }

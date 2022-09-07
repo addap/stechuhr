@@ -7,6 +7,7 @@ if [ -f "stechuhr.sqlite3" ]; then
 fi
 
 cat migrations/**/up.sql | sqlite3 stechuhr.sqlite3
+cargo run --bin add_6am_events
 
 mkdir -p auswertung
 

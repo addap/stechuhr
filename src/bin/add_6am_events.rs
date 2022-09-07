@@ -13,11 +13,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut connection = db::establish_connection();
 
     let _55959am = NaiveTime::from_hms(5, 59, 59);
-    let mut current_date = NaiveDate::from_yo(2020, 1);
+    let mut current_date = NaiveDate::from_ymd(2020, 1, 1);
 
     for _ in 0..365 * 30 {
         db::insert_event(
-            &NewWorkEventT::new(current_date.and_time(_55959am), WorkEvent::_6am),
+            NewWorkEventT::new(current_date.and_time(_55959am), WorkEvent::_6am),
             &mut connection,
         );
         current_date = current_date.succ();

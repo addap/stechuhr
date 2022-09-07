@@ -35,10 +35,7 @@ impl fmt::Display for ModelError {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Clone, Copy, AsExpression, FromSqlRow, Serialize, Deserialize,
-)]
-#[sql_type = "Bool"]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy, FromSqlRow, Serialize, Deserialize)]
 pub enum WorkStatus {
     Away,
     Working,
@@ -99,7 +96,7 @@ impl fmt::Display for WorkStatus {
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Clone, AsExpression, FromSqlRow, Serialize, Deserialize,
 )]
-#[sql_type = "Text"]
+#[diesel(sql_type = Text)]
 pub enum WorkEvent {
     StatusChange(i32, String, WorkStatus),
     #[deprecated]
@@ -128,13 +125,22 @@ impl fmt::Display for WorkEvent {
     }
 }
 
-// derive AsExpression
 #[derive(Debug, Clone, Queryable, PartialEq, Eq, PartialOrd)]
 pub struct WorkEventT {
     #[allow(unused)]
     id: i32,
     pub created_at: NaiveDateTime,
     pub event: WorkEvent,
+}
+
+impl WorkEventT {
+    pub fn new(id: i32, created_at: NaiveDateTime, event: WorkEvent) -> Self {
+        Self {
+            id,
+            created_at,
+            event,
+        }
+    }
 }
 
 impl Ord for WorkEventT {
@@ -148,12 +154,11 @@ impl Ord for WorkEventT {
     }
 }
 
-// derive AsExpression
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = events)]
 pub struct NewWorkEventT {
     created_at: NaiveDateTime,
-    #[column_name = "event_json"]
+    #[diesel(column_name = event_json)]
     pub event: WorkEvent,
 }
 
@@ -204,10 +209,9 @@ impl FromStr for Cardid {
 // using sql_type annotation as described below does not work because it is not found
 // https://github.com/diesel-rs/diesel/blob/1.4.x/guide_drafts/trait_derives.md#aschangeset
 // https://noyez.gitlab.io/post/2018-08-05-a-small-custom-bool-type-in-diesel/
-// derive AsChangeset
 #[derive(Debug, Clone, AsChangeset, Identifiable)]
-#[table_name = "staff"]
-#[primary_key(uuid)]
+#[diesel(table_name = staff)]
+#[diesel(primary_key(uuid))]
 pub struct DBStaffMember {
     uuid: i32,
     name: String,
@@ -217,6 +221,16 @@ pub struct DBStaffMember {
 }
 
 impl DBStaffMember {
+    pub fn new(uuid: i32, name: String, pin: String, cardid: String, is_visible: bool) -> Self {
+        Self {
+            uuid,
+            name,
+            pin,
+            cardid,
+            is_visible,
+        }
+    }
+
     pub fn uuid(&self) -> i32 {
         self.uuid
     }
@@ -299,7 +313,7 @@ impl StaffMember {
 }
 
 #[derive(Debug, Clone, Insertable)]
-#[table_name = "staff"]
+#[diesel(table_name = staff)]
 pub struct NewStaffMember {
     pub name: String,
     pub pin: String,
@@ -325,9 +339,8 @@ impl NewStaffMember {
 }
 
 /// A pbkdf2 password hash string in PHC format.
-// derive AsExpression
 #[derive(Debug, Insertable)]
-#[table_name = "passwords"]
+#[diesel(table_name = passwords)]
 pub struct PasswordHash {
     phc: String,
 }

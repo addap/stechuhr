@@ -250,7 +250,7 @@ pub enum StatisticsError {
     DurationError(Duration, Duration),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SoftStatisticsError {
     AlreadyWorking(NaiveDateTime, String),
     AlreadyAway(NaiveDateTime, String),

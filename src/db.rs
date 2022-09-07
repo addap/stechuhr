@@ -28,25 +28,16 @@ fn load_staff(connection: &mut SqliteConnection) -> Vec<DBStaffMember> {
         .expect("Error loading staff from DB")
 }
 
-/// Load all events from the database.
-fn load_events(connection: &mut SqliteConnection) -> Vec<WorkEventT> {
-    use schema::events::dsl::*;
-
-    let evts = events
-        .order_by(created_at.asc())
-        .load::<WorkEventT>(connection)
-        .expect("Error loading events");
-
-    evts
-}
-
 /// Load all events in the specified range from the database.
 pub fn load_events_between(
-    start_time: NaiveDateTime,
-    end_time: NaiveDateTime,
+    start_time: Option<NaiveDateTime>,
+    end_time: Option<NaiveDateTime>,
     connection: &mut SqliteConnection,
 ) -> Vec<WorkEventT> {
     use schema::events::dsl::*;
+
+    let start_time = start_time.unwrap_or(NaiveDateTime::MIN);
+    let end_time = end_time.unwrap_or(NaiveDateTime::MAX);
 
     let evts = events
         .filter(created_at.ge(start_time))
@@ -58,10 +49,13 @@ pub fn load_events_between(
     evts
 }
 
-pub fn load_state(connection: &mut SqliteConnection) -> Vec<StaffMember> {
+pub fn load_state(
+    current_time: NaiveDateTime,
+    connection: &mut SqliteConnection,
+) -> Vec<StaffMember> {
     let loaded_staff = load_staff(connection);
-    let events = load_events(connection);
-    let staff = staff_compute_status(loaded_staff, events.as_slice());
+    let previous_events = load_events_between(None, Some(current_time), connection);
+    let staff = staff_compute_status(loaded_staff, &previous_events);
 
     staff
 }
@@ -114,7 +108,7 @@ pub fn insert_staff(
     Ok(newly_inserted.with_status(WorkStatus::Away))
 }
 
-pub fn insert_event(new_event: &NewWorkEventT, connection: &mut SqliteConnection) -> WorkEventT {
+pub fn insert_event(new_event: NewWorkEventT, connection: &mut SqliteConnection) -> WorkEventT {
     use schema::events::dsl::*;
 
     diesel::insert_into(events)
@@ -174,9 +168,9 @@ fn staff_compute_status(staff: Vec<DBStaffMember>, events: &[WorkEventT]) -> Vec
 
 pub fn staff_member_compute_status(
     staff_member: DBStaffMember,
-    events: &[WorkEventT],
+    previous_events: &[WorkEventT],
 ) -> StaffMember {
-    for eventt in events.iter().rev() {
+    for eventt in previous_events.iter().rev() {
         match eventt.event {
             WorkEvent::StatusChange(id, _, status) if id == staff_member.uuid() => {
                 return staff_member.with_status(status);

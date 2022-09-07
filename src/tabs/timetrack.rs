@@ -264,7 +264,7 @@ impl Tab for TimetrackTab {
                         } else {
                             self.break_input_value.clear();
                             return Err(StechuhrError::Str(String::from(
-                                "Person mit dieser PIN/diesem Dongle wird nicht angezeigt.",
+                                "Person mit dieser PIN/diesem Dongle ist deaktiviert.",
                             )));
                         }
                     } else {

@@ -3,7 +3,7 @@ use super::{
     StatisticsError,
 };
 use crate::{SharedData, StechuhrError};
-use chrono::{naive::MIN_DATETIME, Date, Local, Locale, NaiveDateTime, NaiveTime, TimeZone};
+use chrono::{Date, Local, Locale, NaiveDateTime, NaiveTime, TimeZone};
 use std::borrow::Cow;
 use stechuhr::{
     date_ext::NaiveDateExt,
@@ -148,8 +148,8 @@ fn evaluate_hours_for_time(
     end_time: NaiveDateTime,
 ) -> Result<StaffHours, StechuhrError> {
     // Load events before the evaluation period in order to set the correct initial status for staff members.
-    let previous_events = db::load_events_between(MIN_DATETIME, start_time, &mut shared.connection);
-    let events = db::load_events_between(start_time, end_time, &mut shared.connection);
+    let previous_events = db::load_events_between(None, Some(start_time), &mut shared.connection);
+    let events = db::load_events_between(Some(start_time), Some(end_time), &mut shared.connection);
     let raw_staff = shared
         .staff
         .iter()
@@ -217,21 +217,147 @@ fn evaluate_hours_for_staff_member<'a>(
 
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
+    use stechuhr::{
+        models::{DBStaffMember, WorkEvent, WorkEventT, WorkStatus},
+        schema::staff::is_visible,
+    };
+
+    use crate::tabs::statistics::SoftStatisticsError;
+
+    use super::evaluate_hours_for_events;
+
     /// evaluate_hours_for_events where staff member has no StatusChange events.
     #[test]
-    fn zero_worktime() {}
+    fn zero_worktime() {
+        let raw_staff = vec![DBStaffMember::new(
+            1,
+            String::from("Aaron"),
+            String::from("1111"),
+            String::from("1111111111"),
+            true,
+        )];
+        let events = vec![];
+        let previous_events = vec![];
+        let start_time = NaiveDate::from_ymd(2000, 1, 1).and_hms(20, 0, 0);
+
+        let hours =
+            evaluate_hours_for_events(raw_staff, &events, &previous_events, start_time).unwrap();
+
+        assert!(hours.errors().is_empty());
+
+        assert_eq!(hours.hours()[0].minutes_1, 0);
+        assert_eq!(hours.hours()[0].minutes_2, 0);
+        assert_eq!(hours.hours()[0].minutes_3, 0);
+    }
 
     /// evaluate_hours_for_events where staff member has some worktime in all slots.
     #[test]
-    fn normal_worktime() {}
+    fn normal_worktime() {
+        let raw_staff = vec![DBStaffMember::new(
+            1,
+            String::from("Aaron"),
+            String::from("1111"),
+            String::from("1111111111"),
+            true,
+        )];
+        let events = vec![
+            WorkEventT::new(
+                1,
+                NaiveDate::from_ymd(2000, 1, 1).and_hms(18, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+            ),
+            WorkEventT::new(
+                2,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(1, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Away),
+            ),
+        ];
+        let previous_events = vec![];
+        let start_time = NaiveDate::from_ymd(2000, 1, 1).and_hms(6, 0, 0);
+
+        let hours =
+            evaluate_hours_for_events(raw_staff, &events, &previous_events, start_time).unwrap();
+
+        assert!(hours.errors().is_empty());
+
+        assert_eq!(hours.hours()[0].minutes_1, 2 * 60);
+        assert_eq!(hours.hours()[0].minutes_2, 4 * 60);
+        assert_eq!(hours.hours()[0].minutes_3, 1 * 60);
+    }
 
     /// evaluate_hours_for_events where staff member has been working before the time starts.
     #[test]
-    fn worktime_start() {}
+    fn worktime_start() {
+        let raw_staff = vec![DBStaffMember::new(
+            1,
+            String::from("Aaron"),
+            String::from("1111"),
+            String::from("1111111111"),
+            true,
+        )];
+        let events = vec![WorkEventT::new(
+            2,
+            NaiveDate::from_ymd(2000, 1, 2).and_hms(1, 0, 0),
+            WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Away),
+        )];
+        let previous_events = vec![WorkEventT::new(
+            1,
+            NaiveDate::from_ymd(2000, 1, 1).and_hms(18, 0, 0),
+            WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+        )];
+        let start_time = NaiveDate::from_ymd(2000, 1, 1).and_hms(19, 0, 0);
+
+        let hours =
+            evaluate_hours_for_events(raw_staff, &events, &previous_events, start_time).unwrap();
+
+        assert!(hours.errors().is_empty());
+
+        assert_eq!(hours.hours()[0].minutes_1, 1 * 60);
+        assert_eq!(hours.hours()[0].minutes_2, 4 * 60);
+        assert_eq!(hours.hours()[0].minutes_3, 1 * 60);
+    }
 
     /// evaluate_hours_for_events where staff member works through a 6am barrier.
     #[test]
-    fn error_worktime_6am() {}
+    fn error_worktime_6am() {
+        let raw_staff = vec![DBStaffMember::new(
+            1,
+            String::from("Aaron"),
+            String::from("1111"),
+            String::from("1111111111"),
+            true,
+        )];
+        let events = vec![
+            WorkEventT::new(
+                1,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+            ),
+            WorkEventT::new(
+                2,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 59, 59),
+                WorkEvent::_6am,
+            ),
+        ];
+        let previous_events = vec![];
+        let start_time = NaiveDate::from_ymd(2000, 1, 1).and_hms(6, 0, 0);
+
+        let hours =
+            evaluate_hours_for_events(raw_staff, &events, &previous_events, start_time).unwrap();
+
+        assert_eq!(
+            hours.errors()[0],
+            SoftStatisticsError::StaffStillWorking(
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 59, 59),
+                String::from("Aaron")
+            )
+        );
+
+        assert_eq!(hours.hours()[0].minutes_1, 1 * 60);
+        assert_eq!(hours.hours()[0].minutes_2, 0);
+        assert_eq!(hours.hours()[0].minutes_3, 0);
+    }
 
     /// evaluate_hours_for_events where staff member is still working at the end.
     #[test]
