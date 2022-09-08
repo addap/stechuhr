@@ -50,6 +50,7 @@ pub struct SharedData {
     events: Vec<WorkEventT>,
     connection: SqliteConnection,
     prompt_modal_state: modal::State<PromptModalState>,
+    window_mode: window::Mode,
 }
 
 impl SharedData {
@@ -122,7 +123,6 @@ struct PromptModalState {
 struct Stechuhr {
     shared: SharedData,
     log_scroll: scrollable::State,
-    window_mode: window::Mode,
     active_tab: StechuhrTab,
     should_exit: bool,
     timetrack: TimetrackTab,
@@ -206,7 +206,7 @@ impl Application for Stechuhr {
 
     /// Always run Stechuhr in fullscreen mode.
     fn mode(&self) -> window::Mode {
-        self.window_mode
+        self.shared.window_mode
     }
 
     fn new(mut connection: SqliteConnection) -> (Self, Command<Message>) {
@@ -224,9 +224,9 @@ impl Application for Stechuhr {
                     events: Vec::new(),
                     connection: connection,
                     prompt_modal_state: modal::State::default(),
+                    window_mode: window::Mode::Fullscreen,
                 },
                 log_scroll,
-                window_mode: window::Mode::Fullscreen,
                 active_tab: StechuhrTab::Timetrack,
                 should_exit: false,
                 timetrack: TimetrackTab::new(),
@@ -306,7 +306,7 @@ impl Application for Stechuhr {
                 self.log_scroll.snap_to(1.0);
             }
             Message::ToggleFullscreen => {
-                self.window_mode = match self.window_mode {
+                self.shared.window_mode = match self.shared.window_mode {
                     window::Mode::Fullscreen => window::Mode::Windowed,
                     _ => window::Mode::Fullscreen,
                 }

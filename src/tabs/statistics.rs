@@ -15,7 +15,7 @@ mod time_eval;
 use std::{error, fmt};
 
 use chrono::{Date, Duration, Local, Locale, NaiveDate, NaiveDateTime, TimeZone};
-use iced::{button, Alignment, Button, Column, Container, Element, Length, Row, Text};
+use iced::{button, window, Alignment, Button, Column, Container, Element, Length, Row, Text};
 use iced_aw::{
     date_picker::{self, DatePicker},
     TabLabel,
@@ -235,6 +235,8 @@ impl Tab for StatsTab {
                 self.month_picker.show(false);
             }
             StatsMessage::Generate => {
+                // Set windowed to help people find the generated CSV.
+                shared.window_mode = window::Mode::Windowed;
                 let hours = event_eval::evaluate_hours_for_month(shared, self.date)?;
                 StatsTab::generate_csv(shared, self.date, hours)?;
             }
