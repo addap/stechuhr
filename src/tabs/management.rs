@@ -1,7 +1,6 @@
 //! Tab to add/change/get info about users
 use std::{error, fmt, mem};
 
-use chrono::Local;
 use iced::{
     alignment::{Horizontal, Vertical},
     button, keyboard, scrollable, text_input, Alignment, Button, Checkbox, Column, Container,
@@ -235,7 +234,6 @@ pub struct ManagementTab {
     new_cardid_state: text_input::State,
     new_cardid_value: String,
     new_submit_state: button::State,
-    end_party_button_state: button::State,
 
     delete_modal_state: modal::State<DeleteModalState>,
     delete_idx: Option<usize>,
@@ -273,7 +271,6 @@ pub enum ManagementMessage {
     CancelDeleteRow,
     ChangeNewRow(Option<String>, Option<String>, Option<String>),
     SubmitNewRow,
-    EndEvent,
     GenericSubmit,
     HandleEvent(Event),
 }
@@ -307,8 +304,6 @@ impl ManagementTab {
             new_cardid_state: text_input::State::default(),
             new_cardid_value: String::from(""),
             new_submit_state: button::State::default(),
-
-            end_party_button_state: button::State::default(),
 
             delete_modal_state: modal::State::default(),
             delete_idx: None,
@@ -467,29 +462,11 @@ impl ManagementTab {
             staff_edit = staff_edit.push(new_row);
         }
 
-        let event_over = Button::new(
-            &mut self.end_party_button_state,
-            Text::new("Event beenden").horizontal_alignment(Horizontal::Center),
-        )
-        .on_press(ManagementMessage::EndEvent);
-
-        let content = Column::new()
-            .push(
-                Container::new(staff_edit)
-                    .width(Length::Fill)
-                    .height(Length::FillPortion(90))
-                    .center_x()
-                    .align_y(Vertical::Top),
-            )
-            .push(
-                Container::new(event_over)
-                    .width(Length::Fill)
-                    .height(Length::FillPortion(10))
-                    .center_x()
-                    .center_y(),
-            )
-            .spacing(20)
-            .align_items(Alignment::Center);
+        let content = Container::new(staff_edit)
+            .width(Length::Fill)
+            .height(Length::FillPortion(90))
+            .center_x()
+            .align_y(Vertical::Top);
 
         let delete_modal_value = if let Some(delete_idx) = self.delete_idx {
             if let Some(staff_member) = shared.staff.get(delete_idx) {
@@ -747,14 +724,6 @@ impl Tab for ManagementTab {
                     Err(e) => format!("Ungültige Dongle-ID. {}", e),
                 };
                 shared.prompt_message(msg);
-            }
-            ManagementMessage::EndEvent => {
-                let sign_off_time = Local::now().naive_local();
-                let sign_off_events = shared.sign_off_all_staff(sign_off_time);
-                for eventt in sign_off_events.into_iter() {
-                    shared.log_eventt(eventt);
-                }
-                shared.create_event(WorkEvent::EventOver);
             }
             ManagementMessage::GenericSubmit => {
                 let (focus_idx, _) = self.collect_inputs();

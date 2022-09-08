@@ -254,8 +254,6 @@ pub enum StatisticsError {
 pub enum SoftStatisticsError {
     AlreadyWorking(NaiveDateTime, String),
     AlreadyAway(NaiveDateTime, String),
-    #[deprecated]
-    OverWhileWorking(NaiveDateTime, String),
     StaffStillWorking(NaiveDateTime, String),
 }
 
@@ -282,10 +280,6 @@ impl fmt::Display for SoftStatisticsError {
             ),
             Self::AlreadyAway(date, name) => format!(
                 "Um {} wurde der Status von {} auf 'Pause' gesetzt während er/sie schon in der Pause war. Inkonsistente Datenbank, bitte Adrian Bescheid sagen.",
-                date, name
-            ),
-            Self::OverWhileWorking(date, name) => format!(
-                "Um {} wurde eine Hochzeit beendet als {} noch gearbeitet hat. Inkonsistente Datenbank, bitte Adrian Bescheid sagen.",
                 date, name
             ),
             Self::StaffStillWorking(date, name) => format!(

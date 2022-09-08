@@ -99,10 +99,6 @@ impl fmt::Display for WorkStatus {
 #[diesel(sql_type = Text)]
 pub enum WorkEvent {
     StatusChange(i32, String, WorkStatus),
-    #[deprecated]
-    EventStart,
-    #[deprecated]
-    EventOver,
     _6am,
     Info(String),
     Error(String),
@@ -114,8 +110,6 @@ impl fmt::Display for WorkEvent {
             WorkEvent::StatusChange(_, name, status) => {
                 format!("Status von {} wurde auf \"{}\" gesetzt", name, status)
             }
-            WorkEvent::EventStart => String::from("Event gestartet"),
-            WorkEvent::EventOver => String::from("Event gestoppt"),
             WorkEvent::_6am => String::from("6 Uhr morgens"),
             WorkEvent::Info(msg) => format!("Info: {}", msg),
             WorkEvent::Error(msg) => format!("Error: {}", msg),

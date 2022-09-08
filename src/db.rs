@@ -175,7 +175,7 @@ pub fn staff_member_compute_status(
             WorkEvent::StatusChange(id, _, status) if id == staff_member.uuid() => {
                 return staff_member.with_status(status);
             }
-            WorkEvent::EventOver | WorkEvent::_6am => {
+            WorkEvent::_6am => {
                 return staff_member.with_status(WorkStatus::Away);
             }
             _ => {}

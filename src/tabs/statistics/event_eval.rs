@@ -99,13 +99,6 @@ impl<'a> EventSM<'a> {
                     self.label = EventSMLabel::Away;
                     Ok(())
                 }
-                WorkEvent::EventOver => {
-                    self.append_soft_error(SoftStatisticsError::OverWhileWorking(
-                        event.created_at,
-                        self.hours_raw.staff_member.name.clone(),
-                    ));
-                    Ok(())
-                }
                 _ => Ok(()),
             },
         }
