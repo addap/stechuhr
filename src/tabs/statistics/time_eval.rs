@@ -141,8 +141,7 @@ impl WorkDuration {
         assert!(start_time < end_time);
 
         let current_seconds = start_time.num_seconds_from_midnight() as i64;
-        // add one second since we're including the end.
-        let mut seconds_remaining = end_time.signed_duration_since(start_time).num_seconds() + 1;
+        let mut seconds_remaining = end_time.signed_duration_since(start_time).num_seconds();
         let mut sm = DurationSM::new(current_seconds);
 
         while seconds_remaining > 0 {
@@ -156,10 +155,12 @@ impl WorkDuration {
     }
 
     pub fn num_minutes(&self) -> [i64; 3] {
-        let WorkDuration([t1, t2, t3]) = self;
-        let minutes_1 = t1.num_minutes();
-        let minutes_2 = t2.num_minutes();
-        let minutes_3 = t3.num_minutes();
+        let &WorkDuration([t1, t2, t3]) = self;
+        // add 59 seconds to everything to round up minutes.
+        let s59 = Duration::seconds(59);
+        let minutes_1 = (t1 + s59).num_minutes();
+        let minutes_2 = (t2 + s59).num_minutes();
+        let minutes_3 = (t3 + s59).num_minutes();
 
         [minutes_1, minutes_2, minutes_3]
     }

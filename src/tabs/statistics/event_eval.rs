@@ -218,10 +218,7 @@ fn evaluate_hours_for_staff_member<'a>(
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use stechuhr::{
-        models::{DBStaffMember, WorkEvent, WorkEventT, WorkStatus},
-        schema::staff::is_visible,
-    };
+    use stechuhr::models::{DBStaffMember, WorkEvent, WorkEventT, WorkStatus};
 
     use crate::tabs::statistics::SoftStatisticsError;
 
@@ -269,7 +266,27 @@ mod tests {
             ),
             WorkEventT::new(
                 2,
-                NaiveDate::from_ymd(2000, 1, 2).and_hms(1, 0, 0),
+                NaiveDate::from_ymd(2000, 1, 1).and_hms(20, 30, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Away),
+            ),
+            WorkEventT::new(
+                3,
+                NaiveDate::from_ymd(2000, 1, 1).and_hms(23, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+            ),
+            WorkEventT::new(
+                4,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(2, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Away),
+            ),
+            WorkEventT::new(
+                5,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(3, 0, 0),
+                WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Working),
+            ),
+            WorkEventT::new(
+                6,
+                NaiveDate::from_ymd(2000, 1, 2).and_hms(5, 0, 0),
                 WorkEvent::StatusChange(1, String::from("Aaron"), WorkStatus::Away),
             ),
         ];
@@ -281,9 +298,9 @@ mod tests {
 
         assert!(hours.errors().is_empty());
 
-        assert_eq!(hours.hours()[0].minutes_1, 2 * 60);
-        assert_eq!(hours.hours()[0].minutes_2, 4 * 60);
-        assert_eq!(hours.hours()[0].minutes_3, 1 * 60);
+        assert_eq!(hours.hours()[0].minutes_1, 3 * 60);
+        assert_eq!(hours.hours()[0].minutes_2, 1 * 60 + 30);
+        assert_eq!(hours.hours()[0].minutes_3, 3 * 60);
     }
 
     /// evaluate_hours_for_events where staff member has been working before the time starts.
