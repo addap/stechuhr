@@ -1,9 +1,8 @@
 ./resources/
 ./migrations/
-./target/debug/stechuhr
 ./target/release/stechuhr
-./target/debug/add_admin_pw
 ./target/release/add_admin_pw
+./target/release/add_6am_events
 ./bootstrap.sh
 ./autostart.sh
 ./stechuhr.desktop
