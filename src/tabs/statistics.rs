@@ -124,6 +124,8 @@ impl StatsTab {
         date: Date<Local>,
         staff_hours: StaffHours,
     ) -> Result<(), StechuhrError> {
+        // TODO create auswertung directory
+
         // Write everyting into a CSV file.
         let filename = format!(
             "./auswertung/{}.csv",

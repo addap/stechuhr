@@ -146,6 +146,8 @@ fn evaluate_hours_for_time(
     let raw_staff = shared
         .staff
         .iter()
+        // Only do calculation for visible staff members.
+        .filter(|staff_member| staff_member.is_visible)
         // Turn everyone into DBStaffMember to forget the working status.
         .map(|staff_member| DBStaffMember::from(Cow::Borrowed(staff_member)))
         .collect::<Vec<_>>();
