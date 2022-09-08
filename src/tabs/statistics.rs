@@ -124,16 +124,18 @@ impl StatsTab {
         date: Date<Local>,
         staff_hours: StaffHours,
     ) -> Result<(), StechuhrError> {
-        // TODO create auswertung directory
+        std::fs::create_dir("./auswertung").ok();
 
         // Write everyting into a CSV file.
         let filename = format!(
-            "./auswertung/{}.csv",
+            "./auswertung/{}.tsv",
             date.format_localized("%Y-%m %B", Locale::de_DE).to_string()
         );
 
         let mut wtr = csv::WriterBuilder::new()
-            // enable flexible writer since errors are just one field
+            // Use Tab as delimiter so that Excel automatically imports it correctly.
+            .delimiter(b'\t')
+            // Enable flexible writer since errors are just one field.
             .flexible(true)
             .from_path(&filename)?;
 
@@ -143,7 +145,7 @@ impl StatsTab {
         for error in staff_hours.errors() {
             shared.log_error(error.to_string());
             // pad with units to put errors into a separate column
-            wtr.serialize(((), (), (), (), (), (), error.to_string()))?;
+            wtr.serialize(((), (), (), (), (), error.to_string()))?;
         }
         wtr.flush()?;
 
